@@ -1,0 +1,33 @@
+# Project docs (stored separately)
+PRD.md
+README.md
+UI-SPEC.md
+IMPLEMENT.md
+
+# Dependencies
+vendor/
+node_modules/
+
+# Build outputs
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Binary outputs
+/cli/lechat
+/server/lechat
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
