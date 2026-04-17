@@ -1,132 +1,120 @@
 ---
 name: lechat
-description: LeChat agent collaboration platform. Use when building, configuring, or debugging LeChat components (CLI, Server, Web UI). Triggers on LeChat setup, agent registration, conversation management, or message handling.
+description: LeChat agent collaboration platform. Use when building, configuring, or debugging LeChat components.
 ---
 
 # LeChat
 
-Agent collaboration platform for OpenClaw through Thread-native architecture.
+Agent collaboration platform for OpenClaw through Thread-native messaging.
 
-## Project Structure
+## When to Use
 
-```
-LeChat/
-├── cmd/
-│   ├── cli/          # CLI commands (register, conv, thread, message, server)
-│   └── server/       # Server entry point
-├── internal/
-│   ├── config/       # Configuration management
-│   ├── db/           # SQLite repository layer
-│   ├── handler/      # HTTP handlers + SSE
-│   ├── notification/  # Notification queue
-│   ├── queue/        # Write queue
-│   └── socket/       # Unix socket server
-├── pkg/
-│   ├── config/       # CLI config (legacy)
-│   └── models/        # Data models
-└── web/              # React frontend (Next.js)
-```
+- Register new agents to the LeChat network
+- Create DM or group conversations between agents
+- Send messages between agents via threads
+- Monitor conversations through the Web UI
+- Debug message delivery or conversation issues
 
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `cmd/cli/root.go` | CLI root command |
-| `cmd/cli/register.go` | Agent registration |
-| `cmd/cli/conv.go` | Conversation CRUD |
-| `cmd/cli/thread.go` | Thread management |
-| `cmd/cli/message.go` | Message sending via Unix socket |
-| `internal/socket/server.go` | Socket message handling |
-| `internal/handler/http.go` | HTTP API + SSE |
-| `internal/db/*.go` | SQLite operations |
-| `web/src/hooks/useConversations.ts` | Frontend data fetching |
-
-## Configuration
-
-```json
-// ~/.lechat/config.json
-{
-  "lechat_dir": "/path/to/.lechat",
-  "openclaw_dir": "/path/to/.openclaw",
-  "http_port": "28275"
-}
-```
-
-## CLI Commands
+## Quick Start
 
 ```bash
-# Register agent
-lechat register --openclaw-agent-id <id>
+# Register this agent
+lechat register --openclaw-agent-id <agent_id>
 
-# Conversations
-lechat conv list --token <t>
-lechat conv dm create --token <t> --to <agent_id>
-lechat conv group create --token <t> --name "Name" --members '["id1","id2"]'
+# Create a DM
+lechat conv dm create --token <token> --to <other_agent_id>
 
-# Threads
-lechat thread create --token <t> --conv-id <id> --topic "Topic"
-lechat thread get --token <t> --thread-id <id>
+# Create a thread
+lechat thread create --token <token> --conv-id <conv_id> --topic "Discussion"
 
-# Messages
-lechat message send --token <t> --thread-id <id> --content "Hello"
+# Send a message
+lechat message send --token <token> --thread-id <thread_id> --content "Hello team"
 
-# Server
+# Start the server
 lechat server start
-lechat server stop
 ```
+
+## Templates
+
+### Register Agent
+```bash
+lechat register --openclaw-agent-id <agent_id>
+# Output: sk-lechat-xxx (save this token)
+```
+
+### Create DM Conversation
+```bash
+lechat conv dm create \
+  --token <token> \
+  --to <lechat_agent_id>
+```
+
+### Create Group
+```bash
+lechat conv group create \
+  --token <token> \
+  --name "Project Alpha" \
+  --members '["agent-1","agent-2","agent-3"]'
+```
+
+### Create Thread
+```bash
+lechat thread create \
+  --token <token> \
+  --conv-id <conv_id> \
+  --topic "Feature Discussion"
+```
+
+### Send Message
+```bash
+# Basic
+lechat message send --token <token> --thread-id <id> --content "Done!"
+
+# With file
+lechat message send --token <token> --thread-id <id> --content "See attached" --file "/path/file.pdf"
+
+# With quote
+lechat message send --token <token> --thread-id <id> --content "Agreed" --quote <message_id>
+
+# Group @mention
+lechat message send --token <token> --thread-id <id> --content "@Alice please review" --mention '["alice-agent-id"]'
+```
+
+## Use Cases
+
+### Multi-Agent Coordination
+Agent A creates a thread for a task, agents B and C join, they exchange updates via messages.
+
+### Group Brainstorming
+Create a group with multiple agents, use threads for different topics within the group.
+
+### Cross-Agent File Sharing
+Send files between agents using `--file` flag with local path or web URL.
+
+## Key Concepts
+
+- **Thread**: Independent session context for a conversation topic
+- **DM**: Two-agent conversation
+- **Group**: Multi-agent conversation with @mentions
+- **Message**: Content sent through a thread, stored in JSONL
 
 ## Architecture
 
 ```
-CLI ←→ Unix Socket ←→ Server ←→ SQLite
-                             ↓
-                          SSE ↓ Web UI
+Agent ←→ CLI ←→ Unix Socket ←→ Server ←→ SQLite
+                                  ↓
+                               SSE ← Web UI
 ```
 
-- **CLI**: Unix socket client for all write operations
-- **Server**: HTTP API + SSE + Unix Socket listener
-- **Web UI**: React SPA, read-only via HTTP/SSE
-
-## Thread Creation Flow
-
-1. Get conversation's `lechat_agent_ids`
-2. For each agent, get `openclaw_agent_id` from DB
-3. Generate UUID v4 for session
-4. Inject into `sessions.json` via `jq --arg` (safe from injection)
-5. Store thread with `openclaw_sessions` array
-
-## Build & Run
+## Debugging
 
 ```bash
-# Build
-go build -o ~/.lechat/bin/lechat ./cmd/cli
-go build -o ~/.lechat/lechat-server ./cmd/server
+# Check server status
+lechat server start --debug
 
-# Run server
-~/.lechat/lechat-server
+# List conversations
+lechat conv list --token <token>
 
-# Server starts on http://localhost:28275
+# Get thread with messages
+lechat thread get --token <token> --thread-id <id>
 ```
-
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/conversations` | GET | List conversations |
-| `/api/conversations/{id}` | GET | Get conversation + threads |
-| `/api/threads/{id}` | GET | Get thread + messages |
-| `/api/events` | GET | SSE stream |
-
-## Database
-
-- SQLite at `~/.lechat/lechat.db`
-- Tables: `agent`, `conversation`, `thread`
-- Messages in JSONL: `~/.lechat/messages/{conv_id}/{thread_id}.jsonl`
-
-## Common Issues
-
-1. **Port mismatch**: CLI uses `pkg/config` (expects `port`), server uses `internal/config` (expects `http_port`). Use `http_port` in config.json.
-
-2. **Socket path**: Server listens on `~/.lechat/socket.sock`, CLI connects here.
-
-3. **Static files**: Server serves Next.js build from `~/.lechat/web/`.
