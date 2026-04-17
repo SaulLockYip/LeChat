@@ -55,7 +55,8 @@ func (m *JSONLManager) AppendMessage(threadID, convID string, msg *models.Messag
 	}
 
 	// Get the next message ID inside the locked section
-	nextID, err := m.GetLastMessageID(threadID, convID)
+	// Pass lockHeld=true since we already hold flockMu
+	nextID, err := m.GetLastMessageID(threadID, convID, true)
 	if err != nil {
 		unix.Flock(int(f.Fd()), unix.LOCK_UN)
 		f.Close()
@@ -139,8 +140,9 @@ func (m *JSONLManager) ReadMessages(threadID, convID string) ([]*models.Message,
 	return messages, nil
 }
 
-// GetLastMessageID returns the last message ID in the thread, or 0 if no messages
-func (m *JSONLManager) GetLastMessageID(threadID, convID string) (int, error) {
+// GetLastMessageID returns the last message ID in the thread, or 0 if no messages.
+// If lockHeld is true, the caller already holds flockMu and this method will not acquire it.
+func (m *JSONLManager) GetLastMessageID(threadID, convID string, lockHeld bool) (int, error) {
 	filePath := m.getFilePath(threadID, convID)
 
 	f, err := os.Open(filePath)
@@ -152,12 +154,16 @@ func (m *JSONLManager) GetLastMessageID(threadID, convID string) (int, error) {
 	}
 	defer f.Close()
 
-	// Lock the file for shared access
-	m.flockMu.Lock()
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_SH); err != nil {
-		f.Close()
-		m.flockMu.Unlock()
-		return 0, fmt.Errorf("failed to lock file: %w", err)
+	// Lock the file for shared access only if not already locked
+	flockAcquired := false
+	if !lockHeld {
+		m.flockMu.Lock()
+		flockAcquired = true
+		if err := unix.Flock(int(f.Fd()), unix.LOCK_SH); err != nil {
+			f.Close()
+			m.flockMu.Unlock()
+			return 0, fmt.Errorf("failed to lock file: %w", err)
+		}
 	}
 
 	var lastID int
@@ -169,29 +175,39 @@ func (m *JSONLManager) GetLastMessageID(threadID, convID string) (int, error) {
 		}
 		var msg models.Message
 		if err := json.Unmarshal(line, &msg); err != nil {
-			unix.Flock(int(f.Fd()), unix.LOCK_UN)
-			f.Close()
-			m.flockMu.Unlock()
+			if flockAcquired {
+				unix.Flock(int(f.Fd()), unix.LOCK_UN)
+			}
+			if flockAcquired {
+				m.flockMu.Unlock()
+			}
 			return 0, fmt.Errorf("failed to unmarshal message: %w", err)
 		}
 		lastID = msg.ID
 	}
 
 	if err := scanner.Err(); err != nil {
-		unix.Flock(int(f.Fd()), unix.LOCK_UN)
-		f.Close()
-		m.flockMu.Unlock()
+		if flockAcquired {
+			unix.Flock(int(f.Fd()), unix.LOCK_UN)
+		}
+		if flockAcquired {
+			m.flockMu.Unlock()
+		}
 		return 0, fmt.Errorf("scanner error: %w", err)
 	}
 
-	// Unlock
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_UN); err != nil {
-		f.Close()
-		m.flockMu.Unlock()
-		return 0, fmt.Errorf("failed to unlock file: %w", err)
+	// Unlock only if we acquired the lock
+	if flockAcquired {
+		if err := unix.Flock(int(f.Fd()), unix.LOCK_UN); err != nil {
+			if flockAcquired {
+				m.flockMu.Unlock()
+			}
+			return 0, fmt.Errorf("failed to unlock file: %w", err)
+		}
+		if flockAcquired {
+			m.flockMu.Unlock()
+		}
 	}
-	f.Close()
-	m.flockMu.Unlock()
 
 	return lastID, nil
 }

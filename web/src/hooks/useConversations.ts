@@ -27,6 +27,32 @@ export interface Conversation {
   unread?: boolean;
 }
 
+// Backend conversation response type (different from frontend)
+interface BackendConversation {
+  id: string;
+  type: string; // "dm" or "group"
+  lechat_agent_ids?: string[];
+  thread_ids?: string[];
+  group_name?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Transform backend conversation to frontend format
+function transformConversation(conv: BackendConversation): Conversation {
+  const type: 'dm' | 'channel' = conv.type === 'group' ? 'channel' : 'dm';
+  return {
+    id: conv.id,
+    type,
+    agentId: type === 'dm' ? conv.lechat_agent_ids?.[0] : undefined,
+    channelId: type === 'channel' ? conv.id : undefined,
+    title: conv.group_name || (type === 'dm' ? `DM ${conv.lechat_agent_ids?.[0]?.slice(0, 8) || 'Unknown'}` : 'Unknown Channel'),
+    timestamp: conv.created_at,
+    lastMessage: undefined,
+    unread: false,
+  };
+}
+
 interface UseConversationsReturn {
   agents: Agent[];
   channels: Channel[];
@@ -64,8 +90,12 @@ export function useConversations(): UseConversationsReturn {
       }
 
       if (conversationsResponse.success && conversationsResponse.data) {
+        // Transform backend conversations to frontend format
+        // The API returns raw backend data that differs from frontend types
+        const backendConvs = conversationsResponse.data as unknown as BackendConversation[];
+        const convs = backendConvs.map(transformConversation);
+
         // Separate conversations into agents (dms) and channels
-        const convs = conversationsResponse.data;
         const agentConvs = convs.filter(c => c.type === 'dm' && c.agentId);
         const channelConvs = convs.filter(c => c.type === 'channel' && c.channelId);
 

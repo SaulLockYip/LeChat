@@ -36,16 +36,18 @@ type SSEBroadcaster struct {
 	stoppedCh  chan struct{}
 }
 
-// NewSSEBroadcaster creates a new SSE broadcaster
+// NewSSEBroadcaster creates a new SSE broadcaster and starts it
 func NewSSEBroadcaster() *SSEBroadcaster {
-	return &SSEBroadcaster{
+	b := &SSEBroadcaster{
 		clients:    make(map[string]SSEClient),
 		register:   make(chan SSEClient),
 		unregister: make(chan string),
 		broadcast:  make(chan Event, 100),
-		stopCh:    make(chan struct{}),
-		stoppedCh: make(chan struct{}),
+		stopCh:     make(chan struct{}),
+		stoppedCh:  make(chan struct{}),
 	}
+	b.Start()
+	return b
 }
 
 // Start begins the broadcaster's event loop

@@ -87,6 +87,7 @@ export const api = {
 
   /**
    * Get conversations for current user
+   * Note: Backend returns {conversations: [...]} format
    */
   async getConversations(): Promise<ApiResponse<Conversation[]>> {
     try {
@@ -94,8 +95,10 @@ export const api = {
       if (!response.ok) {
         throw new Error(`HTTP error ${response.status}`);
       }
-      const data = await response.json();
-      return { success: true, data };
+      const json = await response.json();
+      // Backend returns {conversations: [...]} - extract the array
+      const conversations = json.conversations || [];
+      return { success: true, data: conversations };
     } catch (error) {
       console.error('API: getConversations failed', error);
       return { success: false, error: error instanceof Error ? error.message : 'Failed to fetch conversations' };

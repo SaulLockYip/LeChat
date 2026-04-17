@@ -54,7 +54,7 @@ type SocketMessage struct {
 }
 
 type MessageSendBody struct {
-	From            string   `json:"from"`
+	Token           string   `json:"token"`
 	ThreadID        string   `json:"thread_id"`
 	Content         string   `json:"content"`
 	FilePath        string   `json:"file_path,omitempty"`
@@ -183,7 +183,7 @@ func runMessageSend(cmd *cobra.Command, args []string) error {
 
 	// Build message send body
 	body := MessageSendBody{
-		From:            agent.OpenclawAgentID,
+		Token:           token,
 		ThreadID:        messageThreadID,
 		Content:         messageContent,
 		QuotedMessageID: quotedMsgID,

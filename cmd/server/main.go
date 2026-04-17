@@ -54,9 +54,8 @@ func main() {
 	// Initialize JSONL manager
 	jsonlManager := db.NewJSONLManager(cfg.GetMessagesDir())
 
-	// Initialize SSE broadcaster
+	// Initialize SSE broadcaster (auto-started by NewSSEBroadcaster)
 	sseBroadcaster := handler.NewSSEBroadcaster()
-	sseBroadcaster.Start()
 	defer sseBroadcaster.Stop()
 
 	// Initialize write queue

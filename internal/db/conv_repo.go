@@ -134,9 +134,8 @@ func (r *ConversationRepository) AddThreadToConversation(convID, threadID string
 	}
 	defer tx.Rollback()
 
-	// Lock the conversation row for update
 	var agentIDsJSON, threadIDsJSON string
-	err = tx.QueryRow("SELECT agent_ids, thread_ids FROM conversation WHERE id = ? FOR UPDATE", convID).Scan(&agentIDsJSON, &threadIDsJSON)
+	err = tx.QueryRow("SELECT agent_ids, thread_ids FROM conversation WHERE id = ?", convID).Scan(&agentIDsJSON, &threadIDsJSON)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return sql.ErrNoRows

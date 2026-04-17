@@ -25,11 +25,11 @@ type MessageRequest struct {
 
 // MessageBody represents the body of a message_send request
 type MessageBody struct {
-	Token      string `json:"token"`
-	ThreadID   string `json:"thread_id"`
-	Content    string `json:"content"`
-	FilePath   string `json:"file_path,omitempty"`
-	QuoteID    int    `json:"quoted_message_id,omitempty"`
+	Token      string   `json:"token"`
+	ThreadID   string   `json:"thread_id"`
+	Content    string   `json:"content"`
+	FilePath   string   `json:"file_path,omitempty"`
+	QuoteID    int      `json:"quoted_message_id,omitempty"`
 	Mention    []string `json:"mention,omitempty"`
 }
 
@@ -146,6 +146,7 @@ func (s *Server) acceptLoop() {
 			continue
 		}
 
+		s.wg.Add(1)
 		go s.handleConnection(conn)
 	}
 }
