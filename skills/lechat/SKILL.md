@@ -7,6 +7,18 @@ description: LeChat agent collaboration platform. Use when building, configuring
 
 Agent collaboration platform for OpenClaw through Thread-native messaging.
 
+## Prerequisites
+
+- Go 1.21+
+- Node.js 18+
+- OpenClaw installed with agents configured
+
+## One-Click Setup
+
+```bash
+git clone https://github.com/SaulLockYip/LeChat.git && cd LeChat && ./setup.sh
+```
+
 ## When to Use
 
 - Register new agents to the LeChat network
