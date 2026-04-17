@@ -18,53 +18,6 @@ export interface Thread {
   messages: Message[];
 }
 
-// Placeholder data for demonstration
-const PLACEHOLDER_THREAD: Thread = {
-  id: 'thread-1',
-  title: 'Project Discussion',
-  topic: ' discussing the new feature implementation',
-  messages: [
-    {
-      id: 'msg-1',
-      content: 'Hey team, I wanted to discuss the new feature implementation. What do you think about using a microservices architecture?',
-      sender: 'agent',
-      senderName: 'Alice',
-      timestamp: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-      status: 'sent',
-    },
-    {
-      id: 'msg-2',
-      content: 'I think microservices could work well, especially for the independent scaling of components.',
-      sender: 'user',
-      timestamp: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-      status: 'sent',
-    },
-    {
-      id: 'msg-3',
-      content: 'Agreed. We should also consider the operational complexity though. Maybe we can start with a modular monolith?',
-      sender: 'agent',
-      senderName: 'Bob',
-      timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-      status: 'sent',
-    },
-    {
-      id: 'msg-4',
-      content: 'That sounds like a good approach. Let me draft a proposal for the architecture.',
-      sender: 'user',
-      timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-      status: 'sent',
-    },
-    {
-      id: 'msg-5',
-      content: 'Perfect! I will review your proposal and provide feedback by end of day.',
-      sender: 'agent',
-      senderName: 'Alice',
-      timestamp: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-      status: 'sent',
-    },
-  ],
-};
-
 interface UseThreadReturn {
   thread: Thread | null;
   messages: Message[];
@@ -76,7 +29,8 @@ interface UseThreadReturn {
 }
 
 export function useThread(): UseThreadReturn {
-  const [thread, setThread] = useState<Thread | null>(PLACEHOLDER_THREAD);
+  const [thread, setThread] = useState<Thread | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   // Store timeout IDs for cleanup
@@ -89,8 +43,6 @@ export function useThread(): UseThreadReturn {
       timeoutIdsRef.current = [];
     };
   }, []);
-
-  const messages = thread?.messages ?? [];
 
   const sendMessage = useCallback((content: string) => {
     if (!thread) return;
@@ -109,6 +61,7 @@ export function useThread(): UseThreadReturn {
       ...prev,
       messages: [...prev.messages, newMessage],
     } : null);
+    setMessages(prev => [...prev, newMessage]);
 
     // Simulate sending
     const sendTimeoutId = setTimeout(() => {
@@ -118,6 +71,9 @@ export function useThread(): UseThreadReturn {
           msg.id === newMessage.id ? { ...msg, status: 'sent' as const } : msg
         ),
       } : null);
+      setMessages(prev => prev.map(msg =>
+        msg.id === newMessage.id ? { ...msg, status: 'sent' as const } : msg
+      ));
     }, 1000);
     timeoutIdsRef.current.push(sendTimeoutId);
 
@@ -143,6 +99,7 @@ export function useThread(): UseThreadReturn {
         ...prev,
         messages: [...prev.messages, agentResponse],
       } : null);
+      setMessages(prev => [...prev, agentResponse]);
     }, 2500);
     timeoutIdsRef.current.push(responseTimeoutId);
   }, [thread]);
@@ -154,6 +111,9 @@ export function useThread(): UseThreadReturn {
         msg.id === messageId ? { ...msg, status: 'sending' as const } : msg
       ),
     } : null);
+    setMessages(prev => prev.map(msg =>
+      msg.id === messageId ? { ...msg, status: 'sending' as const } : msg
+    ));
 
     // Simulate retry
     const retryTimeoutId = setTimeout(() => {
@@ -163,22 +123,35 @@ export function useThread(): UseThreadReturn {
           msg.id === messageId ? { ...msg, status: 'sent' as const } : msg
         ),
       } : null);
+      setMessages(prev => prev.map(msg =>
+        msg.id === messageId ? { ...msg, status: 'sent' as const } : msg
+      ));
     }, 1000);
     timeoutIdsRef.current.push(retryTimeoutId);
   }, []);
 
-  const selectThread = useCallback((threadId: string) => {
+  const selectThread = useCallback(async (threadId: string) => {
     setIsLoading(true);
-    // Simulate loading
-    const selectTimeoutId = setTimeout(() => {
-      setThread(PLACEHOLDER_THREAD);
+    try {
+      const response = await fetch(`/api/threads/${threadId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch thread');
+      }
+      const data: Thread = await response.json();
+      setThread(data);
+      setMessages(data.messages);
+    } catch (error) {
+      console.error('Error fetching thread:', error);
+      setThread(null);
+      setMessages([]);
+    } finally {
       setIsLoading(false);
-    }, 500);
-    timeoutIdsRef.current.push(selectTimeoutId);
+    }
   }, []);
 
   const clearThread = useCallback(() => {
     setThread(null);
+    setMessages([]);
   }, []);
 
   return {
