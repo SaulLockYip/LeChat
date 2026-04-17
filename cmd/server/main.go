@@ -79,6 +79,9 @@ func main() {
 		writeQueue,
 		notifyQueue,
 		sseBroadcaster,
+		func() {
+			log.Println("Received server_stop signal via socket")
+		},
 	)
 
 	if err := socketServer.Start(); err != nil {

@@ -44,6 +44,7 @@ type Server struct {
 	writeQueue   *queue.WriteQueue
 	notifyQueue  *notification.NotificationQueue
 	sseBroadcaster *handler.SSEBroadcaster
+	stopCallback func()
 	stopCh       chan struct{}
 	stoppedCh    chan struct{}
 	wg           sync.WaitGroup
@@ -59,6 +60,7 @@ func NewServer(
 	writeQueue *queue.WriteQueue,
 	notifyQueue *notification.NotificationQueue,
 	sseBroadcaster *handler.SSEBroadcaster,
+	stopCallback func(),
 ) *Server {
 	return &Server{
 		socketPath:    socketPath,
@@ -69,6 +71,7 @@ func NewServer(
 		writeQueue:    writeQueue,
 		notifyQueue:   notifyQueue,
 		sseBroadcaster: sseBroadcaster,
+		stopCallback:  stopCallback,
 		stopCh:        make(chan struct{}),
 		stoppedCh:     make(chan struct{}),
 	}
@@ -143,7 +146,6 @@ func (s *Server) acceptLoop() {
 			continue
 		}
 
-		s.wg.Add(1)
 		go s.handleConnection(conn)
 	}
 }
@@ -186,6 +188,14 @@ func (s *Server) handleMessage(conn net.Conn, encoder *json.Encoder, req *Messag
 	switch req.Type {
 	case "message_send":
 		s.handleMessageSend(conn, encoder, req.Body)
+	case "server_stop":
+		s.sendResponse(encoder, map[string]interface{}{
+			"status": "ok",
+			"message": "server_stop_ack",
+		})
+		if s.stopCallback != nil {
+			s.stopCallback()
+		}
 	default:
 		s.sendError(encoder, "unknown_message_type", fmt.Sprintf("Unknown message type: %s", req.Type))
 	}
