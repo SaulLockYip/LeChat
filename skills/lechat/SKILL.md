@@ -53,10 +53,11 @@ lechat conv dm create \
 
 ### Create Group
 ```bash
+# --members expects lechat_agent_id (from `lechat agents list`)
 lechat conv group create \
   --token <token> \
   --name "Project Alpha" \
-  --members '["agent-1","agent-2","agent-3"]'
+  --members '["lechat-id-1","lechat-id-2","lechat-id-3"]'
 ```
 
 ### Create Thread
