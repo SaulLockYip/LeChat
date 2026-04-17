@@ -253,11 +253,11 @@ EOF
 
     print_info "Building CLI..."
     cd "$PROJECT_ROOT"
-    if ! go build -o "$lechat_dir/bin/cli" ./cmd/cli; then
+    if ! go build -o "$lechat_dir/bin/lechat" ./cmd/cli; then
         print_error "Failed to build CLI"
         exit 1
     fi
-    print_success "Built CLI -> $lechat_dir/bin/cli"
+    print_success "Built CLI -> $lechat_dir/bin/lechat"
 
     print_info "Building server..."
     if ! go build -o "$lechat_dir/bin/server" ./cmd/server; then
@@ -328,12 +328,12 @@ EOF
     echo -e "  ${BOLD}Port:${NC} $port"
     echo ""
     echo -e "  ${BOLD}Binaries:${NC}"
-    echo -e "    - $lechat_dir/bin/cli"
+    echo -e "    - $lechat_dir/bin/lechat"
     echo -e "    - $lechat_dir/bin/server"
     echo ""
     echo -e "  ${YELLOW}Please run the following to use LeChat immediately:${NC}"
     echo -e "    ${CYAN}source $shell_rc${NC}"
-    echo -e "    ${CYAN}lechat-cli${NC}"
+    echo -e "    ${CYAN}lechat${NC}"
     echo ""
 }
 
