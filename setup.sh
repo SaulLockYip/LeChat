@@ -298,24 +298,21 @@ EOF
     # Add to PATH
     print_step "Adding LeChat to PATH..."
 
-    local shell_rc=""
-    if [ -n "$ZSH_VERSION" ]; then
-        shell_rc="$HOME/.zshrc"
-    elif [ -n "$BASH_VERSION" ]; then
-        shell_rc="$HOME/.bashrc"
-    else
-        shell_rc="$HOME/.zshrc"
-    fi
-
     local path_export="export PATH=\$HOME/.lechat/bin:\$PATH"
-    if ! grep -q "\.lechat/bin" "$shell_rc" 2>/dev/null; then
-        echo "" >> "$shell_rc"
-        echo "# LeChat" >> "$shell_rc"
-        echo "$path_export" >> "$shell_rc"
-        print_success "Added to $shell_rc"
-    else
-        print_info "PATH already configured in $shell_rc"
-    fi
+
+    # Add to both .bashrc and .zshrc
+    for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+        if [ -f "$rc" ]; then
+            if ! grep -q "\.lechat/bin" "$rc" 2>/dev/null; then
+                echo "" >> "$rc"
+                echo "# LeChat" >> "$rc"
+                echo "$path_export" >> "$rc"
+                print_success "Added to $rc"
+            else
+                print_info "PATH already configured in $rc"
+            fi
+        fi
+    done
 
     # =============================================================================
     # Summary
