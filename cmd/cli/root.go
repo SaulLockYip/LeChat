@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 
 	lechatdb "github.com/lechat/internal/db"
 	"github.com/lechat/pkg/config"
@@ -63,11 +62,4 @@ func init() {
 	rootCmd.AddCommand(threadCmd)
 	rootCmd.AddCommand(messageCmd)
 	rootCmd.AddCommand(serverCmd)
-}
-
-func main() {
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
 }

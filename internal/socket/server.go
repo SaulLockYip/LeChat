@@ -248,7 +248,7 @@ func (s *Server) handleMessageSend(conn net.Conn, encoder *json.Encoder, body js
 		From:      agent.ID,
 		Content:   msgBody.Content,
 		FilePath:  msgBody.FilePath,
-		QuotedMessageID: msgBody.QuoteID,
+		QuotedMessageID: &msgBody.QuoteID,
 		Mention:   msgBody.Mention,
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 	}
@@ -262,7 +262,7 @@ func (s *Server) handleMessageSend(conn net.Conn, encoder *json.Encoder, body js
 	s.writeQueue.Enqueue(writeTask)
 
 	// Enqueue for notification
-	conv, err := s.convRepo.GetConversation(thread.ConvID)
+	conv, err = s.convRepo.GetConversation(thread.ConvID)
 	if err == nil && conv != nil {
 		notifyTask := &notification.NotificationTask{
 			ThreadID:    msgBody.ThreadID,
