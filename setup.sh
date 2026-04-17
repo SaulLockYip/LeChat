@@ -240,7 +240,7 @@ main() {
   "openclaw_dir": "$openclaw_dir",
   "db_path": "$lechat_dir/lechat.db",
   "socket_path": "$lechat_dir/socket.sock",
-  "http_port": $port
+  "http_port": "$port"
 }
 EOF
     print_success "Created config.json"
@@ -260,11 +260,11 @@ EOF
     print_success "Built CLI -> $lechat_dir/bin/lechat"
 
     print_info "Building server..."
-    if ! go build -o "$lechat_dir/bin/server" ./cmd/server; then
+    if ! go build -o "$lechat_dir/lechat-server" ./cmd/server; then
         print_error "Failed to build server"
         exit 1
     fi
-    print_success "Built server -> $lechat_dir/bin/server"
+    print_success "Built server -> $lechat_dir/lechat-server"
 
     # Build React frontend
     print_step "Building React frontend..."
@@ -329,7 +329,7 @@ EOF
     echo ""
     echo -e "  ${BOLD}Binaries:${NC}"
     echo -e "    - $lechat_dir/bin/lechat"
-    echo -e "    - $lechat_dir/bin/server"
+    echo -e "    - $lechat_dir/lechat-server"
     echo ""
     echo -e "  ${YELLOW}Please run the following to use LeChat immediately:${NC}"
     echo -e "    ${CYAN}source $shell_rc${NC}"
