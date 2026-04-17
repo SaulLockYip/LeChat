@@ -92,8 +92,8 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 	execCmd.Start()
 
 	fmt.Println("Server started")
-	fmt.Printf("Web UI: http://localhost:%d\n", cfg.Port)
-	fmt.Printf("API:    http://localhost:%d/api\n", cfg.Port)
+	fmt.Printf("Web UI: http://localhost:%s\n", cfg.HTTPPort)
+	fmt.Printf("API:    http://localhost:%s/api\n", cfg.HTTPPort)
 	return nil
 }
 
@@ -192,8 +192,8 @@ func runServerRestart(cmd *cobra.Command, args []string) error {
 	execCmd.Start()
 
 	fmt.Println("Server restarted")
-	fmt.Printf("Web UI: http://localhost:%d\n", cfg.Port)
-	fmt.Printf("API:    http://localhost:%d/api\n", cfg.Port)
+	fmt.Printf("Web UI: http://localhost:%s\n", cfg.HTTPPort)
+	fmt.Printf("API:    http://localhost:%s/api\n", cfg.HTTPPort)
 	return nil
 }
 
@@ -211,7 +211,7 @@ func isServerRunning(cfg *config.Config) bool {
 
 // Check if server HTTP is responding (alternative method)
 func isServerResponding(cfg *config.Config) bool {
-	url := fmt.Sprintf("http://localhost:%d/health", cfg.Port)
+	url := fmt.Sprintf("http://localhost:%s/health", cfg.HTTPPort)
 	client := &http.Client{Timeout: 2 * time.Second}
 
 	resp, err := client.Get(url)

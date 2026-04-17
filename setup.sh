@@ -282,11 +282,14 @@ EOF
     fi
 
     # Move the output to the lechat_dir
+    rm -rf "$lechat_dir/web"
     if [ -d "$PROJECT_ROOT/web/out" ]; then
         mv "$PROJECT_ROOT/web/out" "$lechat_dir/web"
         print_success "Frontend built -> $lechat_dir/web/"
     elif [ -d "$PROJECT_ROOT/web/.next" ]; then
-        mv "$PROJECT_ROOT/web/.next" "$lechat_dir/web"
+        # Next.js 15: extract .next contents to web root
+        mkdir -p "$lechat_dir/web"
+        cp -r "$PROJECT_ROOT/web/.next/"* "$lechat_dir/web/"
         print_success "Frontend built -> $lechat_dir/web/"
     else
         print_warning "Frontend build output not found"

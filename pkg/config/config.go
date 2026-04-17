@@ -9,7 +9,7 @@ import (
 type Config struct {
 	OpenclawDir string `json:"openclaw_dir"`
 	LechatDir  string `json:"lechat_dir"`
-	Port       int    `json:"port"`
+	HTTPPort   string `json:"http_port"`
 }
 
 func (c *Config) DBPath() string {
