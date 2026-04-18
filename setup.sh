@@ -179,16 +179,54 @@ validate_lechat_dir() {
 # Main Setup
 # =============================================================================
 
+usage() {
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --default    Use all default values (no prompts)"
+    echo "  -h, --help   Show this help message"
+    echo ""
+    echo "Defaults:"
+    echo "  OpenClaw directory: ~/.openclaw"
+    echo "  LeChat directory:  ~/.lechat"
+    echo "  Port:              28275"
+}
+
 main() {
+    # Parse arguments
+    use_defaults=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --default)
+                use_defaults=true
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                usage
+                exit 1
+                ;;
+        esac
+    done
+
     print_header
 
     # Check required tools first
     check_required_tools
 
     # Step 1: OpenClaw Directory
-    echo ""
-    read -p "OpenClaw directory [~/.openclaw]: " openclaw_dir
-    openclaw_dir=${openclaw_dir:-~/.openclaw}
+    if [ "$use_defaults" = true ]; then
+        openclaw_dir="$HOME/.openclaw"
+    else
+        echo ""
+        read -p "OpenClaw directory [~/.openclaw]: " openclaw_dir
+        openclaw_dir=${openclaw_dir:-~/.openclaw}
+    fi
     openclaw_dir="${openclaw_dir/#\~/$HOME}"
 
     if ! validate_openclaw_dir "$openclaw_dir"; then
@@ -196,28 +234,36 @@ main() {
     fi
 
     # Step 2: LeChat Directory
-    while true; do
-        echo ""
-        read -p "LeChat directory [~/.lechat]: " lechat_dir
-        lechat_dir=${lechat_dir:-~/.lechat}
-        lechat_dir="${lechat_dir/#\~/$HOME}"
+    if [ "$use_defaults" = true ]; then
+        lechat_dir="$HOME/.lechat"
+    else
+        while true; do
+            echo ""
+            read -p "LeChat directory [~/.lechat]: " lechat_dir
+            lechat_dir=${lechat_dir:-~/.lechat}
+            lechat_dir="${lechat_dir/#\~/$HOME}"
 
-        validate_lechat_dir "$lechat_dir"
-        result=$?
+            validate_lechat_dir "$lechat_dir"
+            result=$?
 
-        if [ $result -eq 0 ]; then
-            break
-        elif [ $result -eq 2 ]; then
-            continue
-        else
-            exit 1
-        fi
-    done
+            if [ $result -eq 0 ]; then
+                break
+            elif [ $result -eq 2 ]; then
+                continue
+            else
+                exit 1
+            fi
+        done
+    fi
 
     # Step 3: Port
-    echo ""
-    read -p "Port [28275]: " port
-    port=${port:-28275}
+    if [ "$use_defaults" = true ]; then
+        port=28275
+    else
+        echo ""
+        read -p "Port [28275]: " port
+        port=${port:-28275}
+    fi
 
     if ! validate_port "$port"; then
         exit 1

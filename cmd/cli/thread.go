@@ -105,6 +105,9 @@ func runThreadCreate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("unauthorized: not a member of this conversation")
 	}
 
+	// Generate thread ID upfront for use in session injection
+	threadID = strings.ToLower(generateUUID())
+
 	// Get all lechat_agent_ids from conversation
 	lechatAgentIDs := conv.AgentIDs
 
@@ -123,7 +126,7 @@ func runThreadCreate(cmd *cobra.Command, args []string) error {
 		sessionID := strings.ToLower(generateUUID())
 
 		// Inject into each agent's sessions.json using jq
-		sessionKey := fmt.Sprintf("agent:%s:lechat:%s", a.OpenclawAgentID, threadTopic)
+		sessionKey := fmt.Sprintf("agent:%s:lechat:%s", a.OpenclawAgentID, threadID)
 		sessionValue := fmt.Sprintf(`{"sessionId": "%s"}`, sessionID)
 
 		if err := injectSession(a.OpenclawAgentDir, sessionKey, sessionValue); err != nil {
@@ -140,7 +143,7 @@ func runThreadCreate(cmd *cobra.Command, args []string) error {
 	// Create thread record
 	now := time.Now().UTC().Format(time.RFC3339)
 	thread := &models.Thread{
-		ID:                generateUUID(),
+		ID:                threadID,
 		ConvID:            threadConvID,
 		Topic:             threadTopic,
 		Status:            "active",
@@ -184,7 +187,7 @@ func injectSession(agentDir, sessionKey, sessionValue string) error {
 	}
 
 	// Use jq to inject the new session safely using --arg to prevent injection
-	jqCmd := exec.Command("jq", "--arg", "key", sessionKey, "--arg", "value", sessionValue, ". + {($key): ($value)}", sessionsPath)
+	jqCmd := exec.Command("jq", "--arg", "key", sessionKey, "--argjson", "value", sessionValue, ". + {($key): ($value)}", sessionsPath)
 
 	output, err := jqCmd.Output()
 	if err != nil {

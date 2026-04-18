@@ -66,6 +66,7 @@ func SetupRouter(db *sql.DB, jsonl *dbpkg.JSONLManager, sseBroadcaster *SSEBroad
 	log.Printf("[DEBUG] Index file: %s", indexFile)
 
 	// API routes - register first so they take precedence
+	mux.HandleFunc("/api/agents", handler.ListAgents)
 	mux.HandleFunc("/api/conversations", handler.ListConversations)
 	mux.HandleFunc("/api/conversations/", handler.GetConversation)
 	mux.HandleFunc("/api/threads/", handler.GetThread)
@@ -196,6 +197,38 @@ func (h *Handler) ListConversations(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"conversations": conversations,
 	})
+}
+
+// AgentResponse represents the API response for an agent
+type AgentResponse struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Unread int    `json:"unread"`
+}
+
+// ListAgents handles GET /api/agents
+func (h *Handler) ListAgents(w http.ResponseWriter, r *http.Request) {
+	agents, err := h.agentRepo.ListAgents()
+	if err != nil {
+		log.Printf("Error listing agents: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Transform agents to API response format
+	response := make([]AgentResponse, 0, len(agents))
+	for _, agent := range agents {
+		response = append(response, AgentResponse{
+			ID:     agent.ID,
+			Name:   agent.OpenclawAgentID,
+			Status: "online", // Default status
+			Unread: 0,        // Default unread count
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 // GetConversation handles GET /api/conversations/:id

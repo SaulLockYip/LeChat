@@ -346,6 +346,11 @@ func runConvDMCreate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("target agent not found")
 	}
 
+	// Prevent creating a DM with yourself
+	if agent.ID == convTo {
+		return fmt.Errorf("cannot create a DM with yourself")
+	}
+
 	// Build agent IDs: [caller_id, target_id]
 	agentIDs := []string{agent.ID, convTo}
 
@@ -430,6 +435,13 @@ func runConvGroupCreate(cmd *cobra.Command, args []string) error {
 		}
 		if member == nil {
 			return fmt.Errorf("member %s not found", memberID)
+		}
+	}
+
+	// Prevent adding yourself to a group
+	for _, m := range members {
+		if m == agent.ID {
+			return fmt.Errorf("cannot add yourself to a group")
 		}
 	}
 

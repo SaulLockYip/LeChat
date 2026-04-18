@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    setupFiles: ['./src/testutils/setup.ts'],
+    setupFiles: ['./test/utils/setup.ts'],
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     coverage: {
       provider: 'v8',
@@ -14,13 +14,15 @@ export default defineConfig({
       exclude: [
         'src/**/*.d.ts',
         'src/**/*.stories.{ts,tsx}',
-        'src/testutils/**',
+        'test/**',
       ],
     },
   },
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
+    alias: [
+      { find: '@/test/utils', replacement: path.resolve(__dirname, './test/utils') },
+      { find: '@/testutils', replacement: path.resolve(__dirname, './test/utils') },
+      { find: '@', replacement: path.resolve(__dirname, './src') },
+    ],
   },
 });

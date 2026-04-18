@@ -95,23 +95,8 @@ export function useConversations(): UseConversationsReturn {
         const backendConvs = conversationsResponse.data as unknown as BackendConversation[];
         const convs = backendConvs.map(transformConversation);
 
-        // Separate conversations into agents (dms) and channels
-        const agentConvs = convs.filter(c => c.type === 'dm' && c.agentId);
+        // Separate conversations into channels (agents come from /api/agents only)
         const channelConvs = convs.filter(c => c.type === 'channel' && c.channelId);
-
-        // Extract unique agents from conversations
-        const uniqueAgents = new Map<string, Agent>();
-        agentConvs.forEach(conv => {
-          if (conv.agentId && !uniqueAgents.has(conv.agentId)) {
-            uniqueAgents.set(conv.agentId, {
-              id: conv.agentId,
-              name: conv.title,
-              status: 'online',
-              unread: conv.unread ? 1 : 0,
-            });
-          }
-        });
-        setAgents(prev => [...prev, ...Array.from(uniqueAgents.values())]);
 
         // Extract unique channels from conversations
         const uniqueChannels = new Map<string, Channel>();

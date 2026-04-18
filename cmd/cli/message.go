@@ -204,8 +204,8 @@ func runMessageSend(cmd *cobra.Command, args []string) error {
 
 	// Send message
 	socketMsg := SocketMessage{
-		Type:    "message_send",
-		Version: "1.0",
+		Type:    MessageTypeMessageSend,
+		Version: ProtocolVersion,
 		Body:    body,
 	}
 
@@ -232,7 +232,7 @@ func runMessageSend(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to parse server response: %w", err)
 	}
 
-	if resp.Type == "error" {
+	if resp.Type == MessageTypeError {
 		return fmt.Errorf("server error: %v", resp.Body)
 	}
 

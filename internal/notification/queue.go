@@ -1,11 +1,13 @@
 package notification
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"log"
 	"os/exec"
 	"sync"
+	"time"
 
 	"github.com/lechat/pkg/models"
 )
@@ -52,11 +54,7 @@ func NewNotificationQueue(db *sql.DB) *NotificationQueue {
 
 // Enqueue adds a notification task to the queue
 func (q *NotificationQueue) Enqueue(task *NotificationTask) {
-	select {
-	case q.taskCh <- task:
-	default:
-		log.Printf("Notification queue full, dropping task for thread %s", task.ThreadID)
-	}
+	q.taskCh <- task // blocking send, waits until queue has space
 }
 
 // StartWorkers starts the notification worker pool
@@ -154,13 +152,17 @@ func (q *NotificationQueue) notifyGroup(task *NotificationTask) {
 	for _, mentionedAgentID := range task.Mentioned {
 		if session, exists := sessionMap[mentionedAgentID]; exists {
 			q.executeNotification(session.SessionID, task.Message.Content)
+		} else {
+			log.Printf("No session found for mentioned agent %s in thread %s", mentionedAgentID, task.ThreadID)
 		}
 	}
 }
 
 // executeNotification executes the openclaw notification command
 func (q *NotificationQueue) executeNotification(sessionID, message string) {
-	cmd := exec.Command("openclaw", "--session-id", sessionID, "--message", message)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "openclaw", "--session-id", sessionID, "--message", message)
 	if err := cmd.Run(); err != nil {
 		log.Printf("Error executing openclaw notification: %v", err)
 	}

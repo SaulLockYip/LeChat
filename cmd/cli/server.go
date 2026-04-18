@@ -117,8 +117,8 @@ func runServerStop(cmd *cobra.Command, args []string) error {
 	}
 
 	stopMsg := StopMessage{
-		Type:    "server_stop",
-		Version: "1.0",
+		Type:    MessageTypeServerStop,
+		Version: ProtocolVersion,
 	}
 
 	msgBytes, err := json.Marshal(stopMsg)
@@ -153,7 +153,7 @@ func runServerStop(cmd *cobra.Command, args []string) error {
 		var respData map[string]interface{}
 		if err := json.Unmarshal(response[:n], &respData); err == nil {
 			if data, ok := respData["data"].(map[string]interface{}); ok {
-				if msg, ok := data["message"].(string); ok && msg == "server_stop_ack" {
+				if msg, ok := data["message"].(string); ok && msg == MessageTypeServerStopAck {
 					fmt.Println("Server stopped")
 					return nil
 				}

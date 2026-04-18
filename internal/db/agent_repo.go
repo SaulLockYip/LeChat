@@ -62,6 +62,25 @@ func (r *AgentRepository) GetAgentByID(id string) (*models.Agent, error) {
 	return &agent, nil
 }
 
+func (r *AgentRepository) GetAgentByOpenClawAgentID(openclawAgentID string) (*models.Agent, error) {
+	query := `
+		SELECT id, openclaw_agent_id, openclaw_workspace, openclaw_agent_dir, token
+		FROM agent
+		WHERE openclaw_agent_id = ?
+	`
+	row := r.db.QueryRow(query, openclawAgentID)
+
+	var agent models.Agent
+	err := row.Scan(&agent.ID, &agent.OpenclawAgentID, &agent.OpenclawWorkspace, &agent.OpenclawAgentDir, &agent.Token)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &agent, nil
+}
+
 func (r *AgentRepository) ListAgents() ([]*models.Agent, error) {
 	query := `
 		SELECT id, openclaw_agent_id, openclaw_workspace, openclaw_agent_dir, token

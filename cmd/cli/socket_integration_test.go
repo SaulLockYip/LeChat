@@ -281,8 +281,8 @@ func TestSocketServer_MessageSend(t *testing.T) {
 	bodyJSON, _ := json.Marshal(msgBody)
 
 	req := MessageRequest{
-		Type:    "message_send",
-		Version: "1.0",
+		Type:    MessageTypeMessageSend,
+		Version: ProtocolVersion,
 		Body:    bodyJSON,
 	}
 	reqJSON, _ := json.Marshal(req)
@@ -304,7 +304,7 @@ func TestSocketServer_MessageSend(t *testing.T) {
 		t.Fatalf("Failed to unmarshal response: %v", err)
 	}
 
-	if resp.Type != "response" {
+	if resp.Type != MessageTypeResponse {
 		t.Errorf("Expected response type 'response', got '%s'", resp.Type)
 	}
 	if resp.Error != nil {
@@ -374,8 +374,8 @@ func TestSocketServer_InvalidToken(t *testing.T) {
 	bodyJSON, _ := json.Marshal(msgBody)
 
 	req := MessageRequest{
-		Type:    "message_send",
-		Version: "1.0",
+		Type:    MessageTypeMessageSend,
+		Version: ProtocolVersion,
 		Body:    bodyJSON,
 	}
 	reqJSON, _ := json.Marshal(req)
@@ -397,7 +397,7 @@ func TestSocketServer_InvalidToken(t *testing.T) {
 		t.Fatalf("Failed to unmarshal response: %v", err)
 	}
 
-	if resp.Type != "response" {
+	if resp.Type != MessageTypeResponse {
 		t.Errorf("Expected response type 'response', got '%s'", resp.Type)
 	}
 	if resp.Error == nil {
@@ -451,8 +451,8 @@ func TestSocketServer_ThreadNotFound(t *testing.T) {
 	bodyJSON, _ := json.Marshal(msgBody)
 
 	req := MessageRequest{
-		Type:    "message_send",
-		Version: "1.0",
+		Type:    MessageTypeMessageSend,
+		Version: ProtocolVersion,
 		Body:    bodyJSON,
 	}
 	reqJSON, _ := json.Marshal(req)
@@ -540,8 +540,8 @@ func TestSocketServer_UnauthorizedAgent(t *testing.T) {
 	bodyJSON, _ := json.Marshal(msgBody)
 
 	req := MessageRequest{
-		Type:    "message_send",
-		Version: "1.0",
+		Type:    MessageTypeMessageSend,
+		Version: ProtocolVersion,
 		Body:    bodyJSON,
 	}
 	reqJSON, _ := json.Marshal(req)
@@ -601,7 +601,7 @@ func TestSocketServer_UnknownMessageType(t *testing.T) {
 
 	req := MessageRequest{
 		Type:    "unknown_message_type",
-		Version: "1.0",
+		Version: ProtocolVersion,
 		Body:    []byte("{}"),
 	}
 	reqJSON, _ := json.Marshal(req)
@@ -676,8 +676,8 @@ func TestSocketServer_ConcurrentConnections(t *testing.T) {
 			bodyJSON, _ := json.Marshal(msgBody)
 
 			req := MessageRequest{
-				Type:    "message_send",
-				Version: "1.0",
+				Type:    MessageTypeMessageSend,
+				Version: ProtocolVersion,
 				Body:    bodyJSON,
 			}
 			reqJSON, _ := json.Marshal(req)
@@ -757,8 +757,8 @@ func TestSocketServer_Stop(t *testing.T) {
 	defer conn.Close()
 
 	req := MessageRequest{
-		Type:    "server_stop",
-		Version: "1.0",
+		Type:    MessageTypeServerStop,
+		Version: ProtocolVersion,
 	}
 	reqJSON, _ := json.Marshal(req)
 
@@ -774,7 +774,7 @@ func TestSocketServer_Stop(t *testing.T) {
 	json.Unmarshal(respBytes, &resp)
 
 	// Should get acknowledgment
-	if resp.Data == nil || resp.Data["message"] != "server_stop_ack" {
+	if resp.Data == nil || resp.Data["message"] != MessageTypeServerStopAck {
 		t.Logf("Got response: %+v", resp)
 	}
 

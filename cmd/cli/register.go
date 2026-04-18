@@ -117,6 +117,16 @@ func runRegister(cmd *cobra.Command, args []string) error {
 	defer database.Close()
 
 	agentRepo := lechatdb.NewAgentRepository(database)
+
+	// Check if agent with same OpenClaw agent ID already exists
+	existingAgent, err := agentRepo.GetAgentByOpenClawAgentID(openclawAgentID)
+	if err != nil {
+		return fmt.Errorf("failed to check existing agent: %w", err)
+	}
+	if existingAgent != nil {
+		return fmt.Errorf("agent with OpenClaw agent ID '%s' is already registered", openclawAgentID)
+	}
+
 	if err := agentRepo.CreateAgent(agent); err != nil {
 		return fmt.Errorf("failed to create agent: %w", err)
 	}

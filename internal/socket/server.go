@@ -272,9 +272,8 @@ func (s *Server) handleMessageSend(conn net.Conn, encoder *json.Encoder, body js
 	}
 	s.writeQueue.Enqueue(writeTask)
 
-	// Enqueue for notification
-	conv, err = s.convRepo.GetConversation(thread.ConvID)
-	if err == nil && conv != nil {
+	// Enqueue for notification (reuse conv from line 236)
+	if conv != nil {
 		notifyTask := &notification.NotificationTask{
 			ThreadID:    msgBody.ThreadID,
 			ConvID:      thread.ConvID,
