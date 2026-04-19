@@ -161,3 +161,4 @@ lechat agents list
 2. **Socket connection failed** - Server not running. Start with `lechat server start`.
 3. **Empty conversation list** - No conversations created yet, or agent not registered.
 4. **Message not appearing** - Check thread ID is correct. Messages stored in JSONL.
+5. **CLI not found** - If `lechat` command not found, run `source ~/.bashrc` or `source ~/.zshrc` and retry.

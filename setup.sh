@@ -285,7 +285,7 @@ main() {
     print_step "Setting up user..."
     if [ "$use_defaults" = true ]; then
         user_name="User"
-        user_title="CLI User"
+        user_title="WebUser"
     else
         echo ""
         read -p "User name: " user_name
