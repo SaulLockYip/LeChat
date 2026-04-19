@@ -149,7 +149,8 @@ func SetupRouter(db *sql.DB, jsonl *dbpkg.JSONLManager, sseBroadcaster *SSEBroad
 	apiMux := http.NewServeMux()
 
 	// Agents (single method)
-	apiMux.HandleFunc("/agents", handler.ListAgents)
+	apiMux.HandleFunc("/api/agents", handler.ListAgents)
+	apiMux.HandleFunc("/api/agents/", handler.ListAgents)
 
 	// Conversations - unified handler for all methods
 	// Register both with and without trailing slash (ServeMux requires exact match)
@@ -162,10 +163,10 @@ func SetupRouter(db *sql.DB, jsonl *dbpkg.JSONLManager, sseBroadcaster *SSEBroad
 	apiMux.HandleFunc("/api/threads/", handler.ThreadsHandler)
 
 	// Messages (single method)
-	apiMux.HandleFunc("/messages", handler.SendMessage)
+	apiMux.HandleFunc("/api/messages", handler.SendMessage)
 
 	// User (single method)
-	apiMux.HandleFunc("/user", handler.UpdateUser)
+	apiMux.HandleFunc("/api/user", handler.UpdateUser)
 
 	// Apply auth middleware to /api routes
 	authenticatedMux := handler.auth.RequireAuth(apiMux)
