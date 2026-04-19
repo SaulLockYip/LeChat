@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	dbpkg "github.com/lechat/internal/db"
 )
 
 // Event represents an SSE event
@@ -177,17 +179,43 @@ func (b *SSEBroadcaster) GetClientCount() int {
 // SSEHandler handles SSE connections
 type SSEHandler struct {
 	broadcaster *SSEBroadcaster
+	userRepo    *dbpkg.UserRepository
 }
 
 // NewSSEHandler creates a new SSE handler
-func NewSSEHandler(broadcaster *SSEBroadcaster) *SSEHandler {
+func NewSSEHandler(broadcaster *SSEBroadcaster, userRepo *dbpkg.UserRepository) *SSEHandler {
 	return &SSEHandler{
 		broadcaster: broadcaster,
+		userRepo:    userRepo,
 	}
+}
+
+// BroadcastNewMessage broadcasts a new message event
+func (h *SSEHandler) BroadcastNewMessage(threadID, convID string, message interface{}) {
+	h.broadcaster.BroadcastNewMessage(threadID, convID, message)
+}
+
+// BroadcastThreadUpdated broadcasts a thread updated event
+func (h *SSEHandler) BroadcastThreadUpdated(threadID, convID string, latestMessageAt string) {
+	h.broadcaster.BroadcastThreadUpdated(threadID, convID, latestMessageAt)
 }
 
 // HandleSSE handles the SSE stream endpoint
 func (h *SSEHandler) HandleSSE(w http.ResponseWriter, r *http.Request) {
+	// Verify token from query param
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, "Unauthorized: token required", http.StatusUnauthorized)
+		return
+	}
+
+	// Verify token against user table
+	user, err := h.userRepo.GetUserByToken(token)
+	if err != nil || user == nil {
+		http.Error(w, "Unauthorized: invalid token", http.StatusUnauthorized)
+		return
+	}
+
 	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")

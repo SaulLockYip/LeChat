@@ -232,6 +232,12 @@ func (s *Server) handleMessageSend(conn net.Conn, encoder *json.Encoder, body js
 		return
 	}
 
+	// Check if thread is closed
+	if thread.Status == "closed" {
+		s.sendError(encoder, "thread_closed", "Cannot send message to closed thread")
+		return
+	}
+
 	// Validate agent belongs to conversation
 	conv, err := s.convRepo.GetConversation(thread.ConvID)
 	if err != nil {

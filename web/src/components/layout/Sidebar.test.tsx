@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@/testutils/test_wrapper';
+import { render, screen, within } from '@/test/utils/test_wrapper';
 import userEvent from '@testing-library/user-event';
 import { Sidebar } from './Sidebar';
 

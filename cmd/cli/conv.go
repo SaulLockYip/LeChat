@@ -32,18 +32,14 @@ var convGetCmd = &cobra.Command{
 var convDMCmd = &cobra.Command{
 	Use:   "dm",
 	Short: "DM conversation commands",
+	Long:  `DM conversations are automatically created when agents register.
+Use 'lechat conv dm list' to view your DM conversations.`,
 }
 
 var convDMListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all DM conversations",
 	RunE:  runConvDMList,
-}
-
-var convDMCreateCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create a DM conversation",
-	RunE:  runConvDMCreate,
 }
 
 // Group subcommand parent
@@ -64,9 +60,16 @@ var convGroupCreateCmd = &cobra.Command{
 	RunE:  runConvGroupCreate,
 }
 
+var convGroupJoinCmd = &cobra.Command{
+	Use:   "join",
+	Short: "Join a group conversation",
+	Long:  `Join an existing group conversation. The agent is identified by its token.
+The conversation must be a group type (not DM).`,
+	RunE:  runConvGroupJoin,
+}
+
 var (
 	convID      string
-	convTo      string
 	convName    string
 	convMembers string
 )
@@ -79,17 +82,17 @@ func init() {
 
 	// Add dm subcommands
 	convDMCmd.AddCommand(convDMListCmd)
-	convDMCmd.AddCommand(convDMCreateCmd)
 
 	// Add group subcommands
 	convGroupCmd.AddCommand(convGroupListCmd)
 	convGroupCmd.AddCommand(convGroupCreateCmd)
+	convGroupCmd.AddCommand(convGroupJoinCmd)
+
+	convGroupJoinCmd.Flags().StringVar(&convID, "conv-id", "", "Conversation ID")
+	convGroupJoinCmd.MarkFlagRequired("conv-id")
 
 	convGetCmd.Flags().StringVar(&convID, "conv-id", "", "Conversation ID")
 	convGetCmd.MarkFlagRequired("conv-id")
-
-	convDMCreateCmd.Flags().StringVar(&convTo, "to", "", "Target lechat agent ID")
-	convDMCreateCmd.MarkFlagRequired("to")
 
 	convGroupCreateCmd.Flags().StringVar(&convName, "name", "", "Group name")
 	convGroupCreateCmd.MarkFlagRequired("name")
@@ -309,87 +312,6 @@ func runConvGet(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runConvDMCreate(cmd *cobra.Command, args []string) error {
-	if token == "" {
-		return fmt.Errorf("token is required")
-	}
-	if convTo == "" {
-		return fmt.Errorf("--to is required")
-	}
-
-	cfg, err := config.GetConfig()
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
-
-	database, err := initDB(cfg)
-	if err != nil {
-		return fmt.Errorf("failed to connect to database: %w", err)
-	}
-	defer database.Close()
-
-	agentRepo := lechatdb.NewAgentRepository(database)
-	convRepo := lechatdb.NewConversationRepository(database)
-
-	// Validate token and get agent
-	agent, err := agentRepo.GetAgentByToken(token)
-	if err != nil || agent == nil {
-		return fmt.Errorf("invalid token")
-	}
-
-	// Verify target agent exists
-	targetAgent, err := agentRepo.GetAgentByID(convTo)
-	if err != nil {
-		return fmt.Errorf("failed to verify target agent: %w", err)
-	}
-	if targetAgent == nil {
-		return fmt.Errorf("target agent not found")
-	}
-
-	// Prevent creating a DM with yourself
-	if agent.ID == convTo {
-		return fmt.Errorf("cannot create a DM with yourself")
-	}
-
-	// Build agent IDs: [caller_id, target_id]
-	agentIDs := []string{agent.ID, convTo}
-
-	// Check if DM already exists
-	existing, err := convRepo.GetConversationByAgents(agentIDs)
-	if err != nil {
-		return fmt.Errorf("failed to check existing conversation: %w", err)
-	}
-	if existing != nil {
-		// Return existing DM
-		output, _ := json.MarshalIndent(existing, "", "  ")
-		fmt.Println(string(output))
-		return nil
-	}
-
-	// Create new DM conversation
-	now := time.Now().UTC().Format(time.RFC3339)
-	conv := &models.Conversation{
-		ID:        generateUUID(),
-		Type:      "dm",
-		AgentIDs:  agentIDs,
-		ThreadIDs: []string{},
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
-
-	if err := convRepo.CreateConversation(conv); err != nil {
-		return fmt.Errorf("failed to create conversation: %w", err)
-	}
-
-	output, err := json.MarshalIndent(conv, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal response: %w", err)
-	}
-
-	fmt.Println(string(output))
-	return nil
-}
-
 func runConvGroupCreate(cmd *cobra.Command, args []string) error {
 	if token == "" {
 		return fmt.Errorf("token is required")
@@ -471,6 +393,67 @@ func runConvGroupCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println(string(output))
+	return nil
+}
+
+func runConvGroupJoin(cmd *cobra.Command, args []string) error {
+	if token == "" {
+		return fmt.Errorf("token is required")
+	}
+	if convID == "" {
+		return fmt.Errorf("conv-id is required")
+	}
+
+	cfg, err := config.GetConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	database, err := initDB(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to connect to database: %w", err)
+	}
+	defer database.Close()
+
+	agentRepo := lechatdb.NewAgentRepository(database)
+	convRepo := lechatdb.NewConversationRepository(database)
+
+	// Validate token and get agent
+	agent, err := agentRepo.GetAgentByToken(token)
+	if err != nil || agent == nil {
+		return fmt.Errorf("invalid token")
+	}
+
+	// Get conversation
+	conv, err := convRepo.GetConversation(convID)
+	if err != nil {
+		return fmt.Errorf("failed to get conversation: %w", err)
+	}
+	if conv == nil {
+		return fmt.Errorf("conversation not found")
+	}
+
+	// Verify it's a group conversation
+	if conv.Type != "group" {
+		return fmt.Errorf("can only join group conversations")
+	}
+
+	// Check if already a member
+	for _, id := range conv.AgentIDs {
+		if id == agent.ID {
+			return fmt.Errorf("already a member of this conversation")
+		}
+	}
+
+	// Add agent to conversation
+	conv.AgentIDs = append(conv.AgentIDs, agent.ID)
+	conv.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+
+	if err := convRepo.UpdateConversation(conv); err != nil {
+		return fmt.Errorf("failed to update conversation: %w", err)
+	}
+
+	fmt.Printf("Successfully joined conversation %s\n", convID)
 	return nil
 }
 

@@ -1,4 +1,8 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, interceptApiCalls } from '../fixtures/setup';
+
+test.beforeEach(async ({ page }) => {
+  await interceptApiCalls(page);
+});
 
 test.describe('LeChat Application', () => {
   test('should load the homepage', async ({ page }) => {

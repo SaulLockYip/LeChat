@@ -126,10 +126,33 @@ export const api = {
   /**
    * Send a message to a thread
    */
-  async sendMessage(threadId: string, content: string): Promise<ApiResponse<Message>> {
-    // Placeholder - will be implemented
-    console.log('API: sendMessage called (placeholder)', threadId, content);
-    return { success: true, data: undefined };
+  async sendMessage(data: {
+    thread_id: string;
+    content: string;
+    file_path?: string;
+    quote_message_id?: number;
+    mention?: string[];
+  }): Promise<ApiResponse<Message>> {
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Failed to send message' }));
+        return { success: false, error: error.error || 'Failed to send message' };
+      }
+      const json = await response.json();
+      return { success: true, data: json.message };
+    } catch (error) {
+      console.error('API: sendMessage failed', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to send message' };
+    }
   },
 
   /**
@@ -154,7 +177,11 @@ export const api = {
    * Get SSE endpoint for real-time updates
    */
   getSSEUrl(): string {
-    return `${API_BASE_URL}/events`;
+    const token = localStorage.getItem('token');
+    if (token) {
+      return `${API_BASE_URL}/api/events?token=${encodeURIComponent(token)}`;
+    }
+    return '';
   },
 };
 

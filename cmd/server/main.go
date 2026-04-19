@@ -51,6 +51,25 @@ func main() {
 	defer database.Close()
 	log.Printf("Database initialized at %s", cfg.DBPath)
 
+	// Initialize user repository and load user from config
+	userRepo := db.NewUserRepository(database)
+	user, err := userRepo.GetUser()
+	if err != nil {
+		log.Fatalf("Failed to get user: %v", err)
+	}
+
+	if user == nil {
+		log.Println("No user found in database. Run setup.sh to create a user.")
+	} else if user.Token == "" {
+		if cfg.User.Token != "" {
+			if err := userRepo.PopulateTokenFromConfig(cfg.User.Token); err != nil {
+				log.Printf("Warning: Failed to populate user token from config: %v", err)
+			} else {
+				log.Println("User token populated from config.json")
+			}
+		}
+	}
+
 	// Initialize JSONL manager
 	jsonlManager := db.NewJSONLManager(cfg.GetMessagesDir())
 
@@ -68,6 +87,10 @@ func main() {
 	notifyQueue.StartWorkers()
 	defer notifyQueue.Stop()
 
+	// Create quit channel before socket server so callback can reference it
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
 	// Initialize Unix socket server
 	socketServer := socket.NewServer(
 		cfg.SocketPath,
@@ -79,7 +102,8 @@ func main() {
 		notifyQueue,
 		sseBroadcaster,
 		func() {
-			log.Println("Received server_stop signal via socket")
+			log.Println("Received server_stop signal via socket, shutting down...")
+			quit <- syscall.SIGTERM
 		},
 	)
 
@@ -89,7 +113,7 @@ func main() {
 	defer socketServer.Stop()
 
 	// Setup HTTP server
-	mux := handler.SetupRouter(database, jsonlManager, sseBroadcaster)
+	mux := handler.SetupRouter(database, jsonlManager, sseBroadcaster, writeQueue, notifyQueue)
 
 	server := &http.Server{
 		Addr:    ":" + cfg.HTTPPort,
@@ -104,9 +128,7 @@ func main() {
 		}
 	}()
 
-	// Wait for shutdown signal
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	// Wait for shutdown signal (from OS signal or socket stop command)
 	<-quit
 
 	log.Println("Shutting down server...")

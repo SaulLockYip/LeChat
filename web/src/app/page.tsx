@@ -1,40 +1,83 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { ThreeColumnLayout } from '@/components/layout/ThreeColumnLayout';
 import { useConversations } from '@/hooks/useConversations';
 import { useThread } from '@/hooks/useThread';
+import { useThreads } from '@/hooks/useThreads';
+import { useSSE } from '@/hooks/useSSE';
 
 export default function HomePage() {
   const {
-    agents,
-    channels,
     conversations,
-    selectAgent,
-    selectChannel,
-    isLoading: isLoadingConversations,
   } = useConversations();
+
+  const {
+    threads,
+    selectedThreadId,
+    isLoading: isLoadingThreads,
+    selectThread: selectThreadInThreads,
+    fetchThreadsForConversation,
+  } = useThreads();
 
   const {
     thread,
     messages,
-    isLoading: isLoadingThread,
+    isLoading: isLoadingMessages,
     sendMessage,
     retryMessage,
-    selectThread,
+    selectThread: selectThreadInThread,
   } = useThread();
 
-  const handleAgentSelect = useCallback((agentId: string) => {
-    selectAgent(agentId);
-  }, [selectAgent]);
+  const [selectedConversationId, setSelectedConversationId] = useState<string | undefined>();
 
-  const handleChannelSelect = useCallback((channelId: string) => {
-    selectChannel(channelId);
-  }, [selectChannel]);
+  // Extract token from URL hash on mount and store in localStorage
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.startsWith('#token=')) {
+      const token = hash.slice(7); // Remove '#token='
+      localStorage.setItem('token', token);
+      window.location.hash = '';
+    }
+  }, []);
 
+  // Get token for SSE connection
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const sseUrl = token ? `/api/events?token=${token}` : undefined;
+
+  // Connect to SSE for real-time updates
+  const { status: sseStatus } = useSSE({
+    url: sseUrl,
+    autoConnect: true,
+    onMessage: (message) => {
+      // The actual event type is in message.data.type since SSE uses default 'message' type
+      const eventData = message.data as { type?: string; thread_id?: string; conv_id?: string };
+      if (eventData?.type === 'new_message') {
+        // Update messages if the message is for the currently selected thread
+        if (selectedThreadId && eventData?.thread_id === selectedThreadId) {
+          // Thread messages will be refreshed by the useThread hook
+          // or we could manually fetch new messages here
+        }
+      } else if (eventData?.type === 'thread_updated') {
+        // Refresh thread list to show latest message info
+        if (selectedConversationId) {
+          fetchThreadsForConversation(selectedConversationId);
+        }
+      }
+    },
+  });
+
+  // When a conversation is selected, fetch its threads
+  const handleConversationSelect = useCallback((conversationId: string) => {
+    setSelectedConversationId(conversationId);
+    fetchThreadsForConversation(conversationId);
+  }, [fetchThreadsForConversation]);
+
+  // When a thread is selected, fetch its messages
   const handleThreadSelect = useCallback((threadId: string) => {
-    selectThread(threadId);
-  }, [selectThread]);
+    selectThreadInThreads(threadId);
+    selectThreadInThread(threadId);
+  }, [selectThreadInThreads, selectThreadInThread]);
 
   const handleSendMessage = useCallback((content: string) => {
     sendMessage(content);
@@ -44,29 +87,34 @@ export default function HomePage() {
     retryMessage(messageId);
   }, [retryMessage]);
 
+  // Format conversations for ThreeColumnLayout
+  const formattedConversations = conversations.map(conv => ({
+    id: conv.id,
+    title: conv.title,
+    type: conv.type,
+    lastMessage: conv.lastMessage,
+    timestamp: conv.timestamp,
+    unread: conv.unread,
+  }));
+
   return (
     <main className="h-screen w-screen overflow-hidden">
       <ThreeColumnLayout
-        serverName="LeChat Server"
-        serverStatus="connected"
-        agents={agents}
-        channels={channels}
-        currentUser="You"
-        conversationTitle="Direct Messages"
-        threads={conversations.map(conv => ({
-          id: conv.id,
-          title: conv.title,
-          lastMessage: conv.lastMessage || '',
-          timestamp: conv.timestamp,
-          unread: conv.unread,
-        }))}
+        // Left column - conversations
+        conversations={formattedConversations}
+        selectedConversationId={selectedConversationId}
+        onConversationSelect={handleConversationSelect}
+        conversationTitle="Conversations"
+        // Middle column - threads
+        threads={threads}
+        selectedThreadId={selectedThreadId || undefined}
+        onThreadSelect={handleThreadSelect}
+        isLoadingThreads={isLoadingThreads}
+        // Right column - messages
         threadTitle={thread?.title}
         threadTopic={thread?.topic}
         messages={messages}
-        isLoadingMessages={isLoadingThread || isLoadingConversations}
-        onAgentSelect={handleAgentSelect}
-        onChannelSelect={handleChannelSelect}
-        onThreadSelect={handleThreadSelect}
+        isLoadingMessages={isLoadingMessages}
         onSendMessage={handleSendMessage}
         onRetryMessage={handleRetryMessage}
       />

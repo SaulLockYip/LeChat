@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	lechatdb "github.com/lechat/internal/db"
@@ -83,6 +85,12 @@ func runRegister(cmd *cobra.Command, args []string) error {
 	if openclawAgentID == "main" {
 		workspace = openclawCfg.Agents.Defaults.Workspace
 		agentDir = filepath.Join(cfg.OpenclawDir, "agents", "main")
+	} else {
+		// Strip "/agent" suffix if present to get the correct agent directory
+		// sessions.json is at: {openclaw_dir}/agents/{openclaw_agent_id}/sessions/sessions.json
+		if strings.HasSuffix(agentDir, "/agent") {
+			agentDir = strings.TrimSuffix(agentDir, "/agent")
+		}
 	}
 
 	// Check sessions.json exists
@@ -129,6 +137,36 @@ func runRegister(cmd *cobra.Command, args []string) error {
 
 	if err := agentRepo.CreateAgent(agent); err != nil {
 		return fmt.Errorf("failed to create agent: %w", err)
+	}
+
+	// Auto-create DMs with all existing agents
+	existingAgents, err := agentRepo.ListAgents()
+	if err == nil {
+		convRepo := lechatdb.NewConversationRepository(database)
+		now := time.Now().UTC().Format(time.RFC3339)
+
+		for _, existingAgent := range existingAgents {
+			// Skip self
+			if existingAgent.ID == agent.ID {
+				continue
+			}
+
+			// Check if DM already exists
+			agentIDs := []string{agent.ID, existingAgent.ID}
+			existingConv, err := convRepo.GetConversationByAgents(agentIDs)
+			if err == nil && existingConv == nil {
+				// Create new DM
+				conv := &models.Conversation{
+					ID:        generateUUID(),
+					Type:      "dm",
+					AgentIDs:  agentIDs,
+					ThreadIDs: []string{},
+					CreatedAt: now,
+					UpdatedAt: now,
+				}
+				convRepo.CreateConversation(conv)
+			}
+		}
 	}
 
 	// Print token to stdout

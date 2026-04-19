@@ -48,3 +48,12 @@ type Message struct {
 
 // NullableString is used for scanning nullable string columns from SQLite
 type NullableString = sql.NullString
+
+type User struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Title     string `json:"title,omitempty"`
+	Token     string `json:"-"` // hidden from API
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}

@@ -1,84 +1,92 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Sidebar } from './Sidebar';
 import { ConversationPanel } from './ConversationPanel';
 import { ThreadPanel } from './ThreadPanel';
+import { ThreadList } from '@/components/features/ThreadList';
 
-type Column = 'sidebar' | 'conversations' | 'thread';
+type Column = 'conversations' | 'threads' | 'messages';
+
+interface ThreadPreview {
+  id: string;
+  title: string;
+  lastMessage?: string;
+  timestamp: string;
+  unread?: boolean;
+  agentName?: string;
+  agentStatus?: 'online' | 'offline' | 'busy';
+}
+
+interface ConversationPreview {
+  id: string;
+  title: string;
+  type: 'dm' | 'channel';
+  lastMessage?: string;
+  timestamp: string;
+  unread?: boolean;
+}
+
+interface Message {
+  id: string;
+  content: string;
+  sender: 'user' | 'agent';
+  senderName?: string;
+  timestamp: string;
+  status?: 'sending' | 'sent' | 'error';
+}
+
+interface Agent {
+  id: string;
+  name: string;
+  status: 'online' | 'offline' | 'busy';
+}
 
 interface ThreeColumnLayoutProps {
-  serverName?: string;
-  serverStatus?: 'connected' | 'connecting' | 'disconnected';
-  agents?: Array<{
-    id: string;
-    name: string;
-    status: 'online' | 'offline' | 'busy';
-    unread?: number;
-  }>;
-  channels?: Array<{
-    id: string;
-    name: string;
-    unread?: number;
-  }>;
-  currentUser?: string;
+  // Left column - conversations
+  conversations?: ConversationPreview[];
+  selectedConversationId?: string;
+  onConversationSelect?: (conversationId: string) => void;
   conversationTitle?: string;
-  conversationSubtitle?: string;
-  threads?: Array<{
-    id: string;
-    title: string;
-    lastMessage: string;
-    timestamp: string;
-    unread?: boolean;
-    agentName?: string;
-    agentStatus?: 'online' | 'offline' | 'busy';
-  }>;
+  agents?: Agent[];
+
+  // Middle column - threads
+  threads?: ThreadPreview[];
+  selectedThreadId?: string;
+  onThreadSelect?: (threadId: string) => void;
+  isLoadingThreads?: boolean;
+
+  // Right column - messages
   threadTitle?: string;
   threadTopic?: string;
-  messages?: Array<{
-    id: string;
-    content: string;
-    sender: 'user' | 'agent';
-    senderName?: string;
-    timestamp: string;
-    status?: 'sending' | 'sent' | 'error';
-  }>;
+  messages?: Message[];
   isLoadingMessages?: boolean;
-  onAgentSelect?: (agentId: string) => void;
-  onChannelSelect?: (channelId: string) => void;
-  onThreadSelect?: (threadId: string) => void;
   onSendMessage?: (content: string) => void;
   onRetryMessage?: (messageId: string) => void;
 }
 
 export function ThreeColumnLayout({
-  serverName,
-  serverStatus,
+  conversations = [],
+  selectedConversationId,
+  onConversationSelect,
+  conversationTitle = 'Conversations',
   agents = [],
-  channels = [],
-  currentUser,
-  conversationTitle,
-  conversationSubtitle,
   threads = [],
+  selectedThreadId,
+  onThreadSelect,
+  isLoadingThreads = false,
   threadTitle,
   threadTopic,
   messages = [],
   isLoadingMessages = false,
-  onAgentSelect,
-  onChannelSelect,
-  onThreadSelect,
   onSendMessage,
   onRetryMessage,
 }: ThreeColumnLayoutProps) {
-  const [mobileColumn, setMobileColumn] = useState<Column>('sidebar');
-  const [selectedAgentId, setSelectedAgentId] = useState<string>();
-  const [selectedChannelId, setSelectedChannelId] = useState<string>();
-  const [selectedThreadId, setSelectedThreadId] = useState<string>();
+  const [mobileColumn, setMobileColumn] = useState<Column>('conversations');
 
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth < 768) {
-        setMobileColumn('sidebar');
+        setMobileColumn('conversations');
       }
     };
     handleResize();
@@ -86,48 +94,36 @@ export function ThreeColumnLayout({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const handleAgentSelect = (agentId: string) => {
-    setSelectedAgentId(agentId);
-    setSelectedChannelId(undefined);
-    setSelectedThreadId(undefined);
-    onAgentSelect?.(agentId);
-  };
-
-  const handleChannelSelect = (channelId: string) => {
-    setSelectedChannelId(channelId);
-    setSelectedAgentId(undefined);
-    setSelectedThreadId(undefined);
-    onChannelSelect?.(channelId);
+  const handleConversationSelect = (conversationId: string) => {
+    onConversationSelect?.(conversationId);
   };
 
   const handleThreadSelect = (threadId: string) => {
-    setSelectedThreadId(threadId);
     onThreadSelect?.(threadId);
   };
 
-  const selectedId = selectedAgentId || selectedChannelId;
-
   // Mobile navigation handlers
   const goToConversations = () => setMobileColumn('conversations');
-  const goToSidebar = () => setMobileColumn('sidebar');
-  const goToThread = () => setMobileColumn('thread');
+  const goToThreads = () => setMobileColumn('threads');
+  const goToMessages = () => setMobileColumn('messages');
+
+  // Convert conversations to the format expected by ConversationPanel (threads prop)
+  const conversationThreads = conversations.map(conv => ({
+    id: conv.id,
+    title: conv.title,
+    type: conv.type,
+    lastMessage: conv.lastMessage || '',
+    timestamp: conv.timestamp,
+    unread: conv.unread,
+    agentName: conv.type === 'dm' ? conv.title.split(' <=> ')[0] : undefined,
+  }));
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-[#e0e5ec]">
       {/* Mobile Navigation */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-[#d5dae2] shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
         <div className="flex items-center h-12 px-4">
-          {mobileColumn === 'conversations' && (
-            <button
-              onClick={goToSidebar}
-              className="w-8 h-8 rounded-lg bg-[#e0e5ec] shadow-[-2px_-2px_4px_rgba(255,255,255,0.7),2px_2px_4px_rgba(0,0,0,0.1)] flex items-center justify-center"
-            >
-              <svg className="w-4 h-4 text-[#5a6270]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-          )}
-          {mobileColumn === 'thread' && (
+          {mobileColumn === 'threads' && (
             <button
               onClick={goToConversations}
               className="w-8 h-8 rounded-lg bg-[#e0e5ec] shadow-[-2px_-2px_4px_rgba(255,255,255,0.7),2px_2px_4px_rgba(0,0,0,0.1)] flex items-center justify-center"
@@ -137,11 +133,21 @@ export function ThreeColumnLayout({
               </svg>
             </button>
           )}
+          {mobileColumn === 'messages' && (
+            <button
+              onClick={goToThreads}
+              className="w-8 h-8 rounded-lg bg-[#e0e5ec] shadow-[-2px_-2px_4px_rgba(255,255,255,0.7),2px_2px 4px rgba(0,0,0,0.1)] flex items-center justify-center"
+            >
+              <svg className="w-4 h-4 text-[#5a6270]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
           <div className="flex-1 text-center">
             <span className="text-sm font-semibold text-[#374151]">
-              {mobileColumn === 'sidebar' && 'LeChat'}
-              {mobileColumn === 'conversations' && (conversationTitle || 'Conversations')}
-              {mobileColumn === 'thread' && (threadTitle || 'Thread')}
+              {mobileColumn === 'conversations' && conversationTitle}
+              {mobileColumn === 'threads' && 'Threads'}
+              {mobileColumn === 'messages' && (threadTitle || 'Messages')}
             </span>
           </div>
           <div className="w-8" /> {/* Spacer for centering */}
@@ -150,10 +156,10 @@ export function ThreeColumnLayout({
 
       {/* Three Column Layout */}
       <div className="flex h-full pt-12 md:pt-0">
-        {/* Sidebar Column */}
+        {/* Left Column - Conversations */}
         <div
           className={`
-            ${mobileColumn === 'sidebar' ? 'translate-x-0' : '-translate-x-full'}
+            ${mobileColumn === 'conversations' ? 'translate-x-0' : '-translate-x-full'}
             md:translate-x-0 md:flex-shrink-0
             transition-transform duration-300 ease-out
             absolute md:relative
@@ -161,38 +167,35 @@ export function ThreeColumnLayout({
             z-40 md:z-auto
           `}
         >
-          <Sidebar
-            serverName={serverName}
-            serverStatus={serverStatus}
+          <ConversationPanel
+            title={conversationTitle}
+            threads={conversationThreads}
             agents={agents}
-            channels={channels}
-            currentUser={currentUser}
-            onAgentSelect={handleAgentSelect}
-            onChannelSelect={handleChannelSelect}
-            selectedId={selectedId}
+            selectedThreadId={selectedConversationId}
+            onThreadSelect={handleConversationSelect}
           />
         </div>
 
         {/* Overlay for mobile */}
-        {mobileColumn !== 'sidebar' && (
+        {mobileColumn !== 'conversations' && (
           <div
             className="md:hidden fixed inset-0 bg-black/20 z-30"
-            onClick={goToSidebar}
+            onClick={goToConversations}
             onKeyDown={(e) => {
               if (e.key === 'Escape' || e.key === 'Enter') {
-                goToSidebar();
+                goToConversations();
               }
             }}
             tabIndex={0}
             role="button"
-            aria-label="Close sidebar"
+            aria-label="Close conversations"
           />
         )}
 
-        {/* Conversation Panel Column */}
+        {/* Middle Column - Threads */}
         <div
           className={`
-            ${mobileColumn === 'conversations' ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}
+            ${mobileColumn === 'threads' ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}
             md:flex-shrink-0
             transition-transform duration-300 ease-out
             absolute md:relative
@@ -200,20 +203,62 @@ export function ThreeColumnLayout({
             z-30 md:z-auto
           `}
         >
-          <ConversationPanel
-            title={conversationTitle}
-            subtitle={conversationSubtitle}
-            threads={threads}
-            selectedThreadId={selectedThreadId}
-            onThreadSelect={handleThreadSelect}
-          />
+          {/* Thread List Panel */}
+          <div className="
+            w-[320px] h-full
+            bg-[#e8ebf0]
+            shadow-[-4px_0_12px_rgba(0,0,0,0.08)]
+            flex flex-col
+            overflow-hidden
+          ">
+            {/* Header */}
+            <div className="
+              p-4
+              bg-[#e0e5ec]
+              shadow-[-4px_-4px_8px_rgba(255,255,255,0.7),4px_4px_8px_rgba(0,0,0,0.08)]
+            ">
+              <h2 className="font-semibold text-[#374151] text-base">Threads</h2>
+            </div>
+
+            {/* Thread List */}
+            <div className="flex-1 overflow-y-auto p-3">
+              {isLoadingThreads ? (
+                <div className="flex flex-col items-center justify-center h-full">
+                  <div className="w-8 h-8 border-2 border-[#8b9298] border-t-transparent rounded-full animate-spin" />
+                  <p className="text-sm text-[#8b9298] mt-2">Loading threads...</p>
+                </div>
+              ) : (
+                <ThreadList
+                  threads={threads.map(t => ({ ...t, lastMessage: t.lastMessage || '' }))}
+                  selectedThreadId={selectedThreadId}
+                  onSelect={handleThreadSelect}
+                />
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* Thread Panel Column */}
+        {/* Overlay for mobile */}
+        {mobileColumn === 'messages' && (
+          <div
+            className="md:hidden fixed inset-0 bg-black/20 z-20"
+            onClick={goToThreads}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' || e.key === 'Enter') {
+                goToThreads();
+              }
+            }}
+            tabIndex={0}
+            role="button"
+            aria-label="Close threads"
+          />
+        )}
+
+        {/* Right Column - Messages */}
         <div
           className={`
             flex-1
-            ${mobileColumn === 'thread' ? 'translate-x-0' : 'translate-x-full'}
+            ${mobileColumn === 'messages' ? 'translate-x-0' : 'translate-x-full'}
             md:translate-x-0
             transition-transform duration-300 ease-out
             absolute md:relative

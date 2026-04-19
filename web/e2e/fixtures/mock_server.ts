@@ -14,17 +14,28 @@ export const mockChannels = [
 export const mockConversations = [
   {
     id: 'conv-1',
-    title: 'Project Discussion',
-    lastMessage: 'Let me check the design specs',
-    timestamp: new Date().toISOString(),
-    unread: 0,
+    type: 'dm',
+    lechat_agent_ids: ['agent-1'],
+    group_name: 'Project Discussion',
+    thread_ids: ['thread-1'],
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   },
   {
-    id: 'conv-2',
-    title: 'Bug Report',
-    lastMessage: 'The issue is fixed now',
-    timestamp: new Date(Date.now() - 3600000).toISOString(),
-    unread: 1,
+    id: 'channel-1',
+    type: 'group',
+    group_name: 'general',
+    thread_ids: ['thread-3'],
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 'channel-2',
+    type: 'group',
+    group_name: 'random',
+    thread_ids: ['thread-4'],
+    created_at: new Date(Date.now() - 3600000).toISOString(),
+    updated_at: new Date(Date.now() - 3600000).toISOString(),
   },
 ];
 
@@ -34,17 +45,24 @@ export const mockThreads = {
     title: 'Project Discussion',
     topic: 'Discussing new features',
     messages: [
-      { id: 'msg-1', content: 'Hello! How can I help you today?', sender: 'agent', timestamp: new Date().toISOString() },
-      { id: 'msg-2', content: 'I need help with the new feature', sender: 'user', timestamp: new Date().toISOString() },
+      { id: 'msg-1', threadId: 'conv-1', content: 'Hello! How can I help you today?', sender: 'agent', senderId: 'agent-1', senderName: 'Claude', timestamp: new Date().toISOString(), status: 'delivered' },
+      { id: 'msg-2', threadId: 'conv-1', content: 'I need help with the new feature', sender: 'user', senderId: 'user-1', senderName: 'You', timestamp: new Date().toISOString(), status: 'delivered' },
     ],
   },
-  'conv-2': {
-    id: 'conv-2',
-    title: 'Bug Report',
-    topic: 'Critical bug fix',
+  'channel-1': {
+    id: 'channel-1',
+    title: 'general',
+    topic: 'General discussions',
     messages: [
-      { id: 'msg-3', content: 'What bug are you experiencing?', sender: 'agent', timestamp: new Date().toISOString() },
-      { id: 'msg-4', content: 'The login button is not working', sender: 'user', timestamp: new Date().toISOString() },
+      { id: 'msg-5', threadId: 'channel-1', content: 'Welcome to general channel!', sender: 'agent', senderId: 'agent-1', senderName: 'Claude', timestamp: new Date().toISOString(), status: 'delivered' },
+    ],
+  },
+  'channel-2': {
+    id: 'channel-2',
+    title: 'random',
+    topic: 'Random discussions',
+    messages: [
+      { id: 'msg-6', threadId: 'channel-2', content: 'Welcome to random channel!', sender: 'agent', senderId: 'agent-2', senderName: 'GPT-4', timestamp: new Date().toISOString(), status: 'delivered' },
     ],
   },
 };
@@ -59,7 +77,7 @@ export const handlers = [
   }),
 
   http.get('/api/threads/:id', ({ params }) => {
-    const thread = mockThreads[params.id as string];
+    const thread = mockThreads[params.id as keyof typeof mockThreads];
     if (!thread) {
       return HttpResponse.json({ error: 'Thread not found' }, { status: 404 });
     }

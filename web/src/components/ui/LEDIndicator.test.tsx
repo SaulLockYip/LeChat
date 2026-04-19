@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@/testutils/test_wrapper';
+import { render, screen } from '@/test/utils/test_wrapper';
 import { LEDIndicator } from './LEDIndicator';
 
 describe('LEDIndicator', () => {

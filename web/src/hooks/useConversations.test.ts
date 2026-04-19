@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useConversations } from './useConversations';
-import { setupDefaultMock } from '@/testutils/mock_api';
+import { setupDefaultMock } from '@/test/utils/mock_api';
 
 describe('useConversations', () => {
   beforeEach(() => {

@@ -11,6 +11,14 @@ type Config struct {
 	DBPath    string `json:"db_path"`
 	SocketPath string `json:"socket_path"`
 	HTTPPort  string `json:"http_port"`
+	User      UserConfig `json:"user"`
+}
+
+type UserConfig struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Title string `json:"title"`
+	Token string `json:"token"`
 }
 
 func LoadConfig(configPath string) (*Config, error) {

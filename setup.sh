@@ -280,16 +280,40 @@ main() {
 
     # Generate config.json
     print_step "Generating config.json..."
+
+    # User setup
+    print_step "Setting up user..."
+    if [ "$use_defaults" = true ]; then
+        user_name="User"
+        user_title=""
+    else
+        echo ""
+        read -p "User name: " user_name
+        user_name=${user_name:-"User"}
+        read -p "User title (optional, press Enter to skip): " user_title
+    fi
+
+    user_token="lc_$(openssl rand -hex 16 2>/dev/null || head -c 32 /dev/urandom | xxd -p)"
+    user_id="user_$(date +%s)"
+    created_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
     cat > "$lechat_dir/config.json" << EOF
 {
   "lechat_dir": "$lechat_dir",
   "openclaw_dir": "$openclaw_dir",
   "db_path": "$lechat_dir/lechat.db",
   "socket_path": "$lechat_dir/socket.sock",
-  "http_port": "$port"
+  "http_port": "$port",
+  "user": {
+    "id": "$user_id",
+    "name": "$user_name",
+    "title": "$user_title",
+    "token": "$user_token"
+  }
 }
 EOF
     print_success "Created config.json"
+    print_success "User token: $user_token (saved to $lechat_dir/config.json)"
 
     # Get the project root directory
     PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"

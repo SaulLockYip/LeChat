@@ -18,12 +18,16 @@ export class ConversationsPage {
     this.page = page;
     this.sidebar = page.locator('nav[aria-label="Sidebar navigation"]');
     this.serverName = page.getByText('LeChat Server');
-    this.agentItems = this.sidebar.getByRole('listitem').filter({ has: page.locator('button') });
-    this.channelItems = this.sidebar.getByText('Channels').locator('..').locator('[role="listitem"]');
+    // Sidebar renders buttons with role="listitem" for agents and channels
+    this.agentItems = this.sidebar.locator('button[role="listitem"]');
+    // Channels section - both use same button structure, differentiate by content
+    this.channelItems = this.sidebar.locator('button[role="listitem"]');
 
-    this.conversationPanel = page.locator('[aria-label*="conversation" i], [aria-label*="thread" i]').first();
-    this.conversationList = page.locator('[role="list"], [aria-label*="conversation" i]');
-    this.conversationItems = this.conversationList.locator('[role="listitem"], [data-testid*="conversation"]');
+    // Conversation panel has w-[320px] and contains thread buttons
+    this.conversationPanel = page.locator('div.w-\\[320px\\]').first();
+    // Thread list in conversation panel - look for the scrollable div with space-y-2
+    this.conversationList = this.conversationPanel.locator('div.space-y-2');
+    this.conversationItems = this.conversationList.locator('button');
   }
 
   async goto() {
@@ -55,7 +59,8 @@ export class ConversationsPage {
   }
 
   async expectUnreadBadge(count: number) {
-    const badge = this.page.locator('[class*="Badge"]').filter({ hasText: String(count) });
+    // Badge with accent variant has bg-[#ff4757] class
+    const badge = this.sidebar.locator('span.bg-\\[\\#ff4757\\]').filter({ hasText: String(count) });
     await expect(badge).toBeVisible();
   }
 

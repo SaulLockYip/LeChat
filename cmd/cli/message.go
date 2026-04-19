@@ -103,6 +103,11 @@ func runMessageSend(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("thread not found")
 	}
 
+	// Check if thread is closed
+	if thread.Status == "closed" {
+		return fmt.Errorf("cannot send message to closed thread")
+	}
+
 	// Get conversation
 	conv, err := convRepo.GetConversation(thread.ConvID)
 	if err != nil {

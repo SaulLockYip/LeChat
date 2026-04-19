@@ -25,6 +25,7 @@ export interface Conversation {
   lastMessage?: string;
   timestamp: string;
   unread?: boolean;
+  threadIds: string[]; // Thread IDs belonging to this conversation
 }
 
 // Backend conversation response type (different from frontend)
@@ -39,17 +40,34 @@ interface BackendConversation {
 }
 
 // Transform backend conversation to frontend format
-function transformConversation(conv: BackendConversation): Conversation {
+function transformConversation(conv: BackendConversation, agentIdToName: Map<string, string>): Conversation {
   const type: 'dm' | 'channel' = conv.type === 'group' ? 'channel' : 'dm';
+
+  let title: string;
+  if (conv.group_name) {
+    title = conv.group_name;
+  } else if (type === 'dm' && conv.lechat_agent_ids && conv.lechat_agent_ids.length >= 2) {
+    // For DM, show "agent1 <=> agent2"
+    const agent1Name = agentIdToName.get(conv.lechat_agent_ids[0]) || conv.lechat_agent_ids[0].slice(0, 8);
+    const agent2Name = agentIdToName.get(conv.lechat_agent_ids[1]) || conv.lechat_agent_ids[1].slice(0, 8);
+    title = `${agent1Name} <=> ${agent2Name}`;
+  } else if (type === 'dm' && conv.lechat_agent_ids && conv.lechat_agent_ids.length === 1) {
+    const agent1Name = agentIdToName.get(conv.lechat_agent_ids[0]) || conv.lechat_agent_ids[0].slice(0, 8);
+    title = `${agent1Name} <=> ?`;
+  } else {
+    title = 'Unknown Channel';
+  }
+
   return {
     id: conv.id,
     type,
     agentId: type === 'dm' ? conv.lechat_agent_ids?.[0] : undefined,
     channelId: type === 'channel' ? conv.id : undefined,
-    title: conv.group_name || (type === 'dm' ? `DM ${conv.lechat_agent_ids?.[0]?.slice(0, 8) || 'Unknown'}` : 'Unknown Channel'),
+    title,
     timestamp: conv.created_at,
     lastMessage: undefined,
     unread: false,
+    threadIds: conv.thread_ids || [], // Preserve thread_ids from backend
   };
 }
 
@@ -85,15 +103,19 @@ export function useConversations(): UseConversationsReturn {
         api.getConversations(),
       ]);
 
+      // Create map of lechat_agent_id -> openclaw_agent_id (name)
+      const agentIdToName = new Map<string, string>();
       if (agentsResponse.success && agentsResponse.data) {
         setAgents(agentsResponse.data);
+        (agentsResponse.data as Agent[]).forEach(agent => {
+          agentIdToName.set(agent.id, agent.name);
+        });
       }
 
       if (conversationsResponse.success && conversationsResponse.data) {
         // Transform backend conversations to frontend format
-        // The API returns raw backend data that differs from frontend types
         const backendConvs = conversationsResponse.data as unknown as BackendConversation[];
-        const convs = backendConvs.map(transformConversation);
+        const convs = backendConvs.map(conv => transformConversation(conv, agentIdToName));
 
         // Separate conversations into channels (agents come from /api/agents only)
         const channelConvs = convs.filter(c => c.type === 'channel' && c.channelId);

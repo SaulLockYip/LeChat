@@ -211,3 +211,53 @@ func (m *JSONLManager) GetLastMessageID(threadID, convID string, lockHeld bool) 
 
 	return lastID, nil
 }
+
+// GetMessage returns a specific message by ID from a thread's JSONL file
+func (m *JSONLManager) GetMessage(threadID, convID string, messageID int) *models.Message {
+	filePath := m.getFilePath(threadID, convID)
+
+	f, err := os.Open(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return nil
+	}
+	defer f.Close()
+
+	// Lock the file for shared access
+	m.flockMu.Lock()
+	if err := unix.Flock(int(f.Fd()), unix.LOCK_SH); err != nil {
+		f.Close()
+		m.flockMu.Unlock()
+		return nil
+	}
+
+	var foundMsg *models.Message
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var msg models.Message
+		if err := json.Unmarshal(line, &msg); err != nil {
+			continue
+		}
+		if msg.ID == messageID {
+			foundMsg = &msg
+			break
+		}
+	}
+
+	unix.Flock(int(f.Fd()), unix.LOCK_UN)
+	f.Close()
+	m.flockMu.Unlock()
+
+	return foundMsg
+}
+
+// GetMessagesDir returns the messages directory path
+func (m *JSONLManager) GetMessagesDir() string {
+	return m.messagesDir
+}

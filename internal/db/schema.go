@@ -55,6 +55,15 @@ CREATE TABLE IF NOT EXISTS message (
 CREATE INDEX IF NOT EXISTS idx_thread_conv_id ON thread(conv_id);
 CREATE INDEX IF NOT EXISTS idx_thread_status ON thread(status);
 CREATE INDEX IF NOT EXISTS idx_message_thread_id ON message(thread_id);
+
+CREATE TABLE IF NOT EXISTS user (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    title TEXT,
+    token TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 `
 
 // InitDB initializes the database connection and creates tables

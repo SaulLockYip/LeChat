@@ -1,17 +1,42 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	dbpkg "github.com/lechat/internal/db"
+	"github.com/lechat/internal/notification"
+	"github.com/lechat/internal/queue"
 	"github.com/lechat/pkg/models"
+	"github.com/google/uuid"
 )
+
+// Allowed directories for file serving
+var allowedDirs []string
+
+func init() {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = os.Getenv("HOME")
+	}
+	if home == "" {
+		home = "/tmp"
+	}
+	// Allow ~/.lechat/ and /tmp/ directories
+	allowedDirs = []string{
+		filepath.Join(home, ".lechat"),
+		"/tmp",
+	}
+}
 
 // Static file paths
 var (
@@ -34,45 +59,122 @@ func getWebRoot() string {
 	return filepath.Dir(exe) + "/web"
 }
 
+// Context key for user
+type contextKey string
+const ContextKeyUser contextKey = "user"
+
+// AuthMiddleware handles Bearer token authentication
+type AuthMiddleware struct {
+	userRepo *dbpkg.UserRepository
+}
+
+func NewAuthMiddleware(userRepo *dbpkg.UserRepository) *AuthMiddleware {
+	return &AuthMiddleware{userRepo: userRepo}
+}
+
+func (m *AuthMiddleware) RequireAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			JSONError(w, http.StatusUnauthorized, "Missing authorization header", "auth_required")
+			return
+		}
+
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+			JSONError(w, http.StatusUnauthorized, "Invalid authorization format", "invalid_auth")
+			return
+		}
+		token := parts[1]
+
+		user, err := m.userRepo.GetUserByToken(token)
+		if err != nil || user == nil {
+			JSONError(w, http.StatusUnauthorized, "Invalid token", "invalid_token")
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), ContextKeyUser, user)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// GetUserFromContext retrieves the user from request context
+func GetUserFromContext(r *http.Request) *models.User {
+	user, _ := r.Context().Value(ContextKeyUser).(*models.User)
+	return user
+}
+
 // Handler holds HTTP handler dependencies
 type Handler struct {
 	db          *sql.DB
 	convRepo    *dbpkg.ConversationRepository
 	threadRepo  *dbpkg.ThreadRepository
 	agentRepo   *dbpkg.AgentRepository
+	userRepo    *dbpkg.UserRepository
 	jsonl       *dbpkg.JSONLManager
 	sseHandler  *SSEHandler
+	writeQueue  *queue.WriteQueue
+	notifyQueue *notification.NotificationQueue
+	auth        *AuthMiddleware
 }
 
 // NewHandler creates a new HTTP handler
-func NewHandler(db *sql.DB, jsonl *dbpkg.JSONLManager, sseHandler *SSEHandler) *Handler {
+func NewHandler(db *sql.DB, jsonl *dbpkg.JSONLManager, sseHandler *SSEHandler, writeQueue *queue.WriteQueue, notifyQueue *notification.NotificationQueue) *Handler {
+	userRepo := dbpkg.NewUserRepository(db)
 	return &Handler{
-		db:         db,
-		convRepo:   dbpkg.NewConversationRepository(db),
-		threadRepo: dbpkg.NewThreadRepository(db),
-		agentRepo:  dbpkg.NewAgentRepository(db),
-		jsonl:      jsonl,
-		sseHandler: sseHandler,
+		db:          db,
+		convRepo:    dbpkg.NewConversationRepository(db),
+		threadRepo:  dbpkg.NewThreadRepository(db),
+		agentRepo:   dbpkg.NewAgentRepository(db),
+		userRepo:    userRepo,
+		jsonl:       jsonl,
+		sseHandler:  sseHandler,
+		writeQueue:  writeQueue,
+		notifyQueue: notifyQueue,
+		auth:        NewAuthMiddleware(userRepo),
 	}
 }
 
 // SetupRouter configures the HTTP router
-func SetupRouter(db *sql.DB, jsonl *dbpkg.JSONLManager, sseBroadcaster *SSEBroadcaster) http.Handler {
+func SetupRouter(db *sql.DB, jsonl *dbpkg.JSONLManager, sseBroadcaster *SSEBroadcaster, writeQueue *queue.WriteQueue, notifyQueue *notification.NotificationQueue) http.Handler {
 	mux := http.NewServeMux()
-	handler := NewHandler(db, jsonl, NewSSEHandler(sseBroadcaster))
+	userRepo := dbpkg.NewUserRepository(db)
+	handler := NewHandler(db, jsonl, NewSSEHandler(sseBroadcaster, userRepo), writeQueue, notifyQueue)
 
 	log.Printf("[DEBUG] Web root: %s", webRoot)
 	log.Printf("[DEBUG] Static dir: %s", staticDir)
 	log.Printf("[DEBUG] Index file: %s", indexFile)
 
 	// API routes - register first so they take precedence
-	mux.HandleFunc("/api/agents", handler.ListAgents)
-	mux.HandleFunc("/api/conversations", handler.ListConversations)
-	mux.HandleFunc("/api/conversations/", handler.GetConversation)
-	mux.HandleFunc("/api/threads/", handler.GetThread)
+	apiMux := http.NewServeMux()
+
+	// GET endpoints (authenticated)
+	apiMux.HandleFunc("/agents", handler.ListAgents)
+	apiMux.HandleFunc("/conversations", handler.ListConversations)
+	apiMux.HandleFunc("/conversations/", handler.GetConversation)
+	apiMux.HandleFunc("/threads/", handler.GetThread)
+
+	// POST endpoints
+	apiMux.HandleFunc("/conversations", handler.CreateConversation)
+	apiMux.HandleFunc("/threads", handler.CreateThread)
+	apiMux.HandleFunc("/messages", handler.SendMessage)
+
+	// PUT endpoints
+	apiMux.HandleFunc("/conversations/", handler.UpdateConversation)
+	apiMux.HandleFunc("/threads/", handler.UpdateThread)
+	apiMux.HandleFunc("/user", handler.UpdateUser)
+
+	// DELETE endpoints
+	apiMux.HandleFunc("/conversations/", handler.DeleteConversation)
+
+	// Apply auth middleware to /api routes
+	authenticatedMux := handler.auth.RequireAuth(apiMux)
+	mux.Handle("/api/", authenticatedMux)
+
+	// SSE events (no auth - handled differently)
 	mux.HandleFunc("/api/events", handler.sseHandler.HandleSSE)
 
-	// Health check
+	// Health check (no auth)
 	mux.HandleFunc("/health", handler.HealthCheck)
 
 	// Static files for Next.js
@@ -83,6 +185,11 @@ func SetupRouter(db *sql.DB, jsonl *dbpkg.JSONLManager, sseBroadcaster *SSEBroad
 	mux.HandleFunc("/", handler.ServeSPA)
 
 	return mux
+}
+
+// generateUUID generates a new UUID string
+func generateUUID() string {
+	return uuid.New().String()
 }
 
 // ServeStaticFile serves files from static directory
@@ -298,6 +405,86 @@ func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ServeFile handles GET /api/files?path={encoded_file_path}
+func (h *Handler) ServeFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	filePath := r.URL.Query().Get("path")
+	if filePath == "" {
+		http.Error(w, "Missing path parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Decode the URL-encoded path
+	decodedPath, err := url.QueryUnescape(filePath)
+	if err != nil {
+		http.Error(w, "Invalid path encoding", http.StatusBadRequest)
+		return
+	}
+
+	// Clean the path to resolve any ".." or similar
+	cleanPath := filepath.Clean(decodedPath)
+
+	// Security: verify path is absolute
+	if !filepath.IsAbs(cleanPath) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	// Check if file exists and is not a directory
+	info, err := os.Stat(cleanPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.Error(w, "File not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if info.IsDir() {
+		http.Error(w, "Cannot serve directory", http.StatusForbidden)
+		return
+	}
+
+	// Read the file
+	data, err := os.ReadFile(cleanPath)
+	if err != nil {
+		log.Printf("Error reading file %s: %v", cleanPath, err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Set content type based on file extension
+	contentType := getFileContentType(cleanPath)
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(data)))
+	w.Write(data)
+}
+
+// getFileContentType returns the content type for a file based on its extension
+func getFileContentType(path string) string {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".txt", ".log", ".md", ".json", ".csv", ".xml", ".html", ".css", ".js", ".ts", ".py", ".go", ".rs", ".java", ".c", ".cpp", ".h":
+		return "text/plain"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	case ".svg":
+		return "image/svg+xml"
+	default:
+		return "application/octet-stream"
+	}
+}
+
 // extractID extracts the ID from a URL path
 func extractID(path, prefix string) string {
 	id := path[len(prefix):]
@@ -369,4 +556,467 @@ func splitPath(path string) []string {
 		parts = append(parts, path)
 	}
 	return parts
+}
+
+// =============================================================================
+// API Endpoint Handlers
+// =============================================================================
+
+// CreateConversationRequest represents the request body for creating a conversation
+type CreateConversationRequest struct {
+	Type      string   `json:"type"`
+	AgentIDs  []string `json:"agent_ids"`
+	GroupName string   `json:"group_name"`
+}
+
+// CreateConversation handles POST /api/conversations
+func (h *Handler) CreateConversation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		JSONError(w, http.StatusMethodNotAllowed, "Method not allowed", "method_not_allowed")
+		return
+	}
+
+	var req CreateConversationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		JSONError(w, http.StatusBadRequest, "Invalid request body", "invalid_body")
+		return
+	}
+
+	if req.Type != "group" {
+		JSONError(w, http.StatusBadRequest, "Only 'group' type supported", "invalid_type")
+		return
+	}
+
+	if req.GroupName == "" || len(req.GroupName) > 255 {
+		JSONError(w, http.StatusBadRequest, "group_name required (max 255 bytes)", "invalid_group_name")
+		return
+	}
+
+	if len(req.AgentIDs) < 1 {
+		JSONError(w, http.StatusBadRequest, "At least 1 agent_id required", "invalid_agent_ids")
+		return
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	conv := &models.Conversation{
+		ID:        generateUUID(),
+		Type:      "group",
+		AgentIDs:  req.AgentIDs,
+		ThreadIDs: []string{},
+		GroupName: &req.GroupName,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	if err := h.convRepo.CreateConversation(conv); err != nil {
+		log.Printf("Error creating conversation: %v", err)
+		JSONError(w, http.StatusInternalServerError, "Failed to create conversation", "db_error")
+		return
+	}
+
+	JSONResponse(w, http.StatusCreated, conv)
+}
+
+// CreateThreadRequest represents the request body for creating a thread
+type CreateThreadRequest struct {
+	ConvID string `json:"conv_id"`
+	Topic  string `json:"topic"`
+}
+
+// CreateThread handles POST /api/threads
+func (h *Handler) CreateThread(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		JSONError(w, http.StatusMethodNotAllowed, "Method not allowed", "method_not_allowed")
+		return
+	}
+
+	var req CreateThreadRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		JSONError(w, http.StatusBadRequest, "Invalid request body", "invalid_body")
+		return
+	}
+
+	if req.ConvID == "" {
+		JSONError(w, http.StatusBadRequest, "conv_id required", "missing_conv_id")
+		return
+	}
+
+	if req.Topic == "" || len(req.Topic) > 255 {
+		JSONError(w, http.StatusBadRequest, "topic required (max 255 bytes)", "invalid_topic")
+		return
+	}
+
+	conv, err := h.convRepo.GetConversation(req.ConvID)
+	if err != nil || conv == nil {
+		JSONError(w, http.StatusNotFound, "Conversation not found", "conv_not_found")
+		return
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	thread := &models.Thread{
+		ID:               generateUUID(),
+		ConvID:           req.ConvID,
+		Topic:            req.Topic,
+		Status:           "active",
+		OpenclawSessions: []models.OpenclawSession{},
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}
+
+	if err := h.threadRepo.CreateThread(thread); err != nil {
+		log.Printf("Error creating thread: %v", err)
+		JSONError(w, http.StatusInternalServerError, "Failed to create thread", "db_error")
+		return
+	}
+
+	h.convRepo.AddThreadToConversation(req.ConvID, thread.ID)
+
+	JSONResponse(w, http.StatusCreated, thread)
+}
+
+// SendMessageRequest represents the request body for sending a message
+type SendMessageRequest struct {
+	ThreadID       string   `json:"thread_id"`
+	Content        string   `json:"content"`
+	FilePath       string   `json:"file_path,omitempty"`
+	QuoteMessageID int      `json:"quote_message_id,omitempty"`
+	Mention        []string `json:"mention,omitempty"`
+}
+
+// SendMessage handles POST /api/messages
+func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		JSONError(w, http.StatusMethodNotAllowed, "Method not allowed", "method_not_allowed")
+		return
+	}
+
+	var req SendMessageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		JSONError(w, http.StatusBadRequest, "Invalid request body", "invalid_body")
+		return
+	}
+
+	if req.ThreadID == "" {
+		JSONError(w, http.StatusBadRequest, "thread_id required", "missing_thread_id")
+		return
+	}
+
+	if req.Content == "" {
+		JSONError(w, http.StatusBadRequest, "content required", "missing_content")
+		return
+	}
+
+	user := GetUserFromContext(r)
+	if user == nil {
+		JSONError(w, http.StatusUnauthorized, "User not authenticated", "unauthenticated")
+		return
+	}
+
+	thread, err := h.threadRepo.GetThread(req.ThreadID)
+	if err != nil || thread == nil {
+		JSONError(w, http.StatusNotFound, "Thread not found", "thread_not_found")
+		return
+	}
+
+	// Check if thread is closed
+	if thread.Status == "closed" {
+		JSONError(w, http.StatusBadRequest, "Cannot send message to closed thread", "thread_closed")
+		return
+	}
+
+	conv, err := h.convRepo.GetConversation(thread.ConvID)
+	if err != nil || conv == nil {
+		JSONError(w, http.StatusNotFound, "Conversation not found", "conv_not_found")
+		return
+	}
+
+	// Build from field: "HUMAN USER: {userName}:{userTitle}"
+	fromField := fmt.Sprintf("HUMAN USER: %s", user.Name)
+	if user.Title != "" {
+		fromField = fmt.Sprintf("HUMAN USER: %s:%s", user.Name, user.Title)
+	}
+
+	msg := models.Message{
+		From:            fromField,
+		Content:         req.Content,
+		FilePath:        req.FilePath,
+		QuotedMessageID: nil,
+		Mention:         req.Mention,
+		Timestamp:       time.Now().UTC().Format(time.RFC3339),
+	}
+
+	if req.QuoteMessageID != 0 {
+		msg.QuotedMessageID = &req.QuoteMessageID
+		// Auto-add quoted message sender to mentions
+		quotedMsg := h.jsonl.GetMessage(req.ThreadID, thread.ConvID, req.QuoteMessageID)
+		if quotedMsg != nil {
+			// Check if sender is an agent (not human user)
+			if !strings.HasPrefix(quotedMsg.From, "HUMAN USER:") {
+				// Convert sender's lechat_agent_id to openclaw_agent_id
+				openclawID := h.getOpenClawAgentIDByLechatID(quotedMsg.From)
+				if openclawID != "" {
+					msg.Mention = append(msg.Mention, openclawID)
+				}
+			}
+		}
+	}
+
+	// Enqueue for writing
+	writeTask := &queue.WriteTask{
+		ThreadID: req.ThreadID,
+		ConvID:   thread.ConvID,
+		Message:  msg,
+	}
+	h.writeQueue.Enqueue(writeTask)
+
+	// Enqueue for notification
+	notifyTask := &notification.NotificationTask{
+		ThreadID:    req.ThreadID,
+		ConvID:      thread.ConvID,
+		ConvType:    conv.Type,
+		FromAgentID: "user:" + user.ID,
+		Message:     msg,
+		Mentioned:   msg.Mention,
+	}
+	h.notifyQueue.Enqueue(notifyTask)
+
+	// Broadcast via SSE
+	h.sseHandler.BroadcastNewMessage(req.ThreadID, thread.ConvID, msg)
+	h.sseHandler.BroadcastThreadUpdated(req.ThreadID, thread.ConvID, msg.Timestamp)
+
+	JSONResponse(w, http.StatusCreated, map[string]interface{}{"message": msg})
+}
+
+// getOpenClawAgentIDByLechatID retrieves the OpenClaw agent ID for a given LeChat agent ID
+func (h *Handler) getOpenClawAgentIDByLechatID(lechatAgentID string) string {
+	query := `SELECT openclaw_agent_id FROM agent WHERE id = ?`
+	var openclawID string
+	err := h.db.QueryRow(query, lechatAgentID).Scan(&openclawID)
+	if err != nil {
+		return ""
+	}
+	return openclawID
+}
+
+// UpdateConversationRequest represents the request body for updating a conversation
+type UpdateConversationRequest struct {
+	GroupName      string   `json:"group_name,omitempty"`
+	AddAgentIDs    []string `json:"add_agent_ids,omitempty"`
+	RemoveAgentIDs []string `json:"remove_agent_ids,omitempty"`
+}
+
+// UpdateConversation handles PUT /api/conversations/:id
+func (h *Handler) UpdateConversation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		JSONError(w, http.StatusMethodNotAllowed, "Method not allowed", "method_not_allowed")
+		return
+	}
+
+	id := extractID(r.URL.Path, "/api/conversations/")
+	if id == "" {
+		JSONError(w, http.StatusBadRequest, "Missing conversation ID", "missing_id")
+		return
+	}
+
+	var req UpdateConversationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		JSONError(w, http.StatusBadRequest, "Invalid request body", "invalid_body")
+		return
+	}
+
+	conv, err := h.convRepo.GetConversation(id)
+	if err != nil || conv == nil {
+		JSONError(w, http.StatusNotFound, "Conversation not found", "conv_not_found")
+		return
+	}
+
+	if conv.Type != "group" {
+		JSONError(w, http.StatusBadRequest, "DM conversations cannot be updated via API", "invalid_type")
+		return
+	}
+
+	if req.GroupName != "" {
+		if len(req.GroupName) > 255 {
+			JSONError(w, http.StatusBadRequest, "group_name too long (max 255 bytes)", "invalid_group_name")
+			return
+		}
+		conv.GroupName = &req.GroupName
+	}
+
+	if len(req.AddAgentIDs) > 0 {
+		existingIDs := make(map[string]bool)
+		for _, id := range conv.AgentIDs {
+			existingIDs[id] = true
+		}
+		for _, id := range req.AddAgentIDs {
+			if !existingIDs[id] {
+				conv.AgentIDs = append(conv.AgentIDs, id)
+			}
+		}
+	}
+
+	if len(req.RemoveAgentIDs) > 0 {
+		removeIDs := make(map[string]bool)
+		for _, id := range req.RemoveAgentIDs {
+			removeIDs[id] = true
+		}
+		newAgentIDs := []string{}
+		for _, id := range conv.AgentIDs {
+			if !removeIDs[id] {
+				newAgentIDs = append(newAgentIDs, id)
+			}
+		}
+		conv.AgentIDs = newAgentIDs
+	}
+
+	conv.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+
+	if err := h.convRepo.UpdateConversation(conv); err != nil {
+		log.Printf("Error updating conversation: %v", err)
+		JSONError(w, http.StatusInternalServerError, "Failed to update conversation", "db_error")
+		return
+	}
+
+	JSONResponse(w, http.StatusOK, conv)
+}
+
+// UpdateThreadRequest represents the request body for updating a thread
+type UpdateThreadRequest struct {
+	Topic  string `json:"topic,omitempty"`
+	Status string `json:"status,omitempty"`
+}
+
+// UpdateThread handles PUT /api/threads/:id
+func (h *Handler) UpdateThread(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		JSONError(w, http.StatusMethodNotAllowed, "Method not allowed", "method_not_allowed")
+		return
+	}
+
+	id := extractID(r.URL.Path, "/api/threads/")
+	if id == "" {
+		JSONError(w, http.StatusBadRequest, "Missing thread ID", "missing_id")
+		return
+	}
+
+	var req UpdateThreadRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		JSONError(w, http.StatusBadRequest, "Invalid request body", "invalid_body")
+		return
+	}
+
+	thread, err := h.threadRepo.GetThread(id)
+	if err != nil || thread == nil {
+		JSONError(w, http.StatusNotFound, "Thread not found", "thread_not_found")
+		return
+	}
+
+	if req.Status != "" && req.Status != "active" && req.Status != "closed" {
+		JSONError(w, http.StatusBadRequest, "status must be 'active' or 'closed'", "invalid_status")
+		return
+	}
+
+	if req.Topic != "" {
+		if len(req.Topic) > 255 {
+			JSONError(w, http.StatusBadRequest, "topic too long (max 255 bytes)", "invalid_topic")
+			return
+		}
+		thread.Topic = req.Topic
+	}
+
+	if req.Status != "" {
+		thread.Status = req.Status
+	}
+
+	thread.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+
+	if err := h.threadRepo.UpdateThread(thread); err != nil {
+		log.Printf("Error updating thread: %v", err)
+		JSONError(w, http.StatusInternalServerError, "Failed to update thread", "db_error")
+		return
+	}
+
+	JSONResponse(w, http.StatusOK, thread)
+}
+
+// UpdateUserRequest represents the request body for updating a user
+type UpdateUserRequest struct {
+	Name  string `json:"name,omitempty"`
+	Title string `json:"title,omitempty"`
+}
+
+// UpdateUser handles PUT /api/user
+func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		JSONError(w, http.StatusMethodNotAllowed, "Method not allowed", "method_not_allowed")
+		return
+	}
+
+	user := GetUserFromContext(r)
+	if user == nil {
+		JSONError(w, http.StatusUnauthorized, "User not authenticated", "unauthenticated")
+		return
+	}
+
+	var req UpdateUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		JSONError(w, http.StatusBadRequest, "Invalid request body", "invalid_body")
+		return
+	}
+
+	if req.Name != "" {
+		user.Name = req.Name
+	}
+	if req.Title != "" {
+		user.Title = req.Title
+	}
+	user.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+
+	if err := h.userRepo.UpdateUser(user); err != nil {
+		log.Printf("Error updating user: %v", err)
+		JSONError(w, http.StatusInternalServerError, "Failed to update user", "db_error")
+		return
+	}
+
+	JSONResponse(w, http.StatusOK, user)
+}
+
+// DeleteConversation handles DELETE /api/conversations/:id
+func (h *Handler) DeleteConversation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		JSONError(w, http.StatusMethodNotAllowed, "Method not allowed", "method_not_allowed")
+		return
+	}
+
+	id := extractID(r.URL.Path, "/api/conversations/")
+	if id == "" {
+		JSONError(w, http.StatusBadRequest, "Missing conversation ID", "missing_id")
+		return
+	}
+
+	conv, err := h.convRepo.GetConversation(id)
+	if err != nil || conv == nil {
+		JSONError(w, http.StatusNotFound, "Conversation not found", "conv_not_found")
+		return
+	}
+
+	if conv.Type != "group" {
+		JSONError(w, http.StatusBadRequest, "DM conversations cannot be deleted", "invalid_type")
+		return
+	}
+
+	// Delete messages folder
+	messagesDir := h.jsonl.GetMessagesDir()
+	convMessagesDir := filepath.Join(messagesDir, conv.ID)
+	os.RemoveAll(convMessagesDir)
+
+	// Delete from database (cascade deletes threads)
+	_, err = h.db.Exec("DELETE FROM conversation WHERE id = ?", id)
+	if err != nil {
+		log.Printf("Error deleting conversation: %v", err)
+		JSONError(w, http.StatusInternalServerError, "Failed to delete conversation", "db_error")
+		return
+	}
+
+	JSONResponse(w, http.StatusOK, map[string]string{"status": "deleted"})
 }

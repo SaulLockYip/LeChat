@@ -9,6 +9,7 @@ export interface Message {
   senderName?: string;
   timestamp: string;
   status?: 'sending' | 'sent' | 'error';
+  filePath?: string;
 }
 
 export interface Thread {
@@ -133,13 +134,47 @@ export function useThread(): UseThreadReturn {
   const selectThread = useCallback(async (threadId: string) => {
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/threads/${threadId}`);
-      if (!response.ok) {
+      // Fetch thread and agents in parallel
+      const [threadResponse, agentsResponse] = await Promise.all([
+        fetch(`/api/threads/${threadId}`),
+        fetch('/api/agents'),
+      ]);
+
+      if (!threadResponse.ok) {
         throw new Error('Failed to fetch thread');
       }
-      const data: Thread = await response.json();
-      setThread(data);
-      setMessages(data.messages);
+
+      // Build agent ID to name mapping
+      const agentIdToName = new Map<string, string>();
+      if (agentsResponse.ok) {
+        const agents = await agentsResponse.json();
+        agents.forEach((agent: { id: string; name: string }) => {
+          agentIdToName.set(agent.id, agent.name);
+        });
+      }
+
+      const data = await threadResponse.json();
+      const threadData = data.thread;
+      const backendMessages = data.messages || [];
+
+      // Transform backend messages to frontend format
+      const transformedMessages: Message[] = backendMessages.map((msg: { id: number; from: string; content: string; timestamp: string; file_path?: string }) => ({
+        id: String(msg.id),
+        content: msg.content,
+        sender: 'agent' as const,
+        senderName: agentIdToName.get(msg.from) || msg.from.slice(0, 8),
+        timestamp: msg.timestamp,
+        status: 'sent' as const,
+        filePath: msg.file_path,
+      }));
+
+      setThread({
+        id: threadData.id,
+        title: threadData.topic || threadData.title,
+        topic: threadData.topic,
+        messages: transformedMessages,
+      });
+      setMessages(transformedMessages);
     } catch (error) {
       console.error('Error fetching thread:', error);
       setThread(null);
