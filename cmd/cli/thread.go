@@ -33,16 +33,26 @@ var threadGetCmd = &cobra.Command{
 	RunE:  runThreadGet,
 }
 
+var threadListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List threads in a conversation",
+	RunE:  runThreadList,
+}
+
 var (
-	threadConvID string
-	threadTopic string
-	threadID    string
+	threadConvID     string
+	threadTopic      string
+	threadID         string
+	threadShowClosed bool
 )
 
 func init() {
 	threadCmd.AddCommand(threadCreateCmd)
 	threadCmd.AddCommand(threadGetCmd)
+	threadCmd.AddCommand(threadListCmd)
 
+	threadListCmd.Flags().StringVar(&threadConvID, "conv-id", "", "Conversation ID")
+	threadListCmd.Flags().BoolVar(&threadShowClosed, "show-closed", false, "Include closed threads")
 	threadCreateCmd.Flags().StringVar(&threadConvID, "conv-id", "", "Conversation ID")
 	threadCreateCmd.MarkFlagRequired("conv-id")
 	threadCreateCmd.Flags().StringVar(&threadTopic, "topic", "", "Thread topic")
@@ -293,6 +303,99 @@ func runThreadGet(cmd *cobra.Command, args []string) error {
 		Messages:  messages,
 		CreatedAt: thread.CreatedAt,
 		UpdatedAt: thread.UpdatedAt,
+	}
+
+	output, err := json.MarshalIndent(response, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal response: %w", err)
+	}
+
+	fmt.Println(string(output))
+	return nil
+}
+
+func runThreadList(cmd *cobra.Command, args []string) error {
+	if token == "" {
+		return fmt.Errorf("token is required")
+	}
+	if threadConvID == "" {
+		return fmt.Errorf("conv-id is required")
+	}
+
+	cfg, err := config.GetConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	database, err := initDB(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to connect to database: %w", err)
+	}
+	defer database.Close()
+
+	agentRepo := lechatdb.NewAgentRepository(database)
+	convRepo := lechatdb.NewConversationRepository(database)
+	threadRepo := lechatdb.NewThreadRepository(database)
+
+	// Validate token and get agent
+	agent, err := agentRepo.GetAgentByToken(token)
+	if err != nil || agent == nil {
+		return fmt.Errorf("invalid token")
+	}
+
+	// Get conversation
+	conv, err := convRepo.GetConversation(threadConvID)
+	if err != nil {
+		return fmt.Errorf("failed to get conversation: %w", err)
+	}
+	if conv == nil {
+		return fmt.Errorf("conversation not found")
+	}
+
+	// Validate agent is in conversation
+	found := false
+	for _, id := range conv.AgentIDs {
+		if id == agent.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("unauthorized: not a member of this conversation")
+	}
+
+	// List threads
+	var threads []*models.Thread
+	if threadShowClosed {
+		threads, err = threadRepo.ListThreadsByConversation(threadConvID)
+	} else {
+		threads, err = threadRepo.ListThreadsByStatus("active")
+		if err != nil {
+			return fmt.Errorf("failed to list threads: %w", err)
+		}
+		// Filter by convID manually
+		var filtered []*models.Thread
+		for _, t := range threads {
+			if t.ConvID == threadConvID {
+				filtered = append(filtered, t)
+			}
+		}
+		threads = filtered
+	}
+	if err != nil {
+		return fmt.Errorf("failed to list threads: %w", err)
+	}
+
+	type ThreadListResponse struct {
+		ConvID   string           `json:"conv_id"`
+		Threads  []*models.Thread `json:"threads"`
+		Count    int              `json:"count"`
+	}
+
+	response := ThreadListResponse{
+		ConvID:  threadConvID,
+		Threads: threads,
+		Count:   len(threads),
 	}
 
 	output, err := json.MarshalIndent(response, "", "  ")
