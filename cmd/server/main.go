@@ -16,6 +16,7 @@ import (
 	"github.com/lechat/internal/notification"
 	"github.com/lechat/internal/queue"
 	"github.com/lechat/internal/socket"
+	"github.com/lechat/pkg/models"
 )
 
 func main() {
@@ -59,7 +60,23 @@ func main() {
 	}
 
 	if user == nil {
-		log.Println("No user found in database. Run setup.sh to create a user.")
+		if cfg.User.Token != "" {
+			newUser := &models.User{
+				ID:        cfg.User.ID,
+				Name:      cfg.User.Name,
+				Title:     cfg.User.Title,
+				Token:     cfg.User.Token,
+				CreatedAt: time.Now().UTC().Format(time.RFC3339),
+				UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+			}
+			if err := userRepo.CreateUser(newUser); err != nil {
+				log.Printf("Warning: Failed to create user: %v", err)
+			} else {
+				log.Println("User created from config.json")
+			}
+		} else {
+			log.Println("No user found in database. Run setup.sh to create a user.")
+		}
 	} else if user.Token == "" {
 		if cfg.User.Token != "" {
 			if err := userRepo.PopulateTokenFromConfig(cfg.User.Token); err != nil {

@@ -72,8 +72,13 @@ export const api = {
    * Get all available agents
    */
   async getAgents(): Promise<ApiResponse<Agent[]>> {
+    const token = localStorage.getItem('token');
     try {
-      const response = await fetch(`${API_BASE_URL}/api/agents`);
+      const response = await fetch(`${API_BASE_URL}/api/agents`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
       if (!response.ok) {
         throw new Error(`HTTP error ${response.status}`);
       }
@@ -90,8 +95,13 @@ export const api = {
    * Note: Backend returns {conversations: [...]} format
    */
   async getConversations(): Promise<ApiResponse<Conversation[]>> {
+    const token = localStorage.getItem('token');
     try {
-      const response = await fetch(`${API_BASE_URL}/api/conversations`);
+      const response = await fetch(`${API_BASE_URL}/api/conversations`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
       if (!response.ok) {
         throw new Error(`HTTP error ${response.status}`);
       }
