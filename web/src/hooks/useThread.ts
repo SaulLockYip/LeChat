@@ -176,7 +176,6 @@ export function useThread(): UseThreadReturn {
       });
       setMessages(transformedMessages);
     } catch (error) {
-      console.error('Error fetching thread:', error);
       setThread(null);
       setMessages([]);
     } finally {

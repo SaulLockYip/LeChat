@@ -119,18 +119,44 @@ export const api = {
    * Get threads for a conversation
    */
   async getThreads(conversationId: string): Promise<ApiResponse<Thread[]>> {
-    // Placeholder - will be implemented
-    console.log('API: getThreads called (placeholder)', conversationId);
-    return { success: true, data: [] };
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/threads?conversation_id=${encodeURIComponent(conversationId)}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error ${response.status}`);
+      }
+      const json = await response.json();
+      return { success: true, data: json.threads || [] };
+    } catch (error) {
+      console.error('API: getThreads failed', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to fetch threads' };
+    }
   },
 
   /**
    * Get messages for a thread
    */
   async getMessages(threadId: string): Promise<ApiResponse<Message[]>> {
-    // Placeholder - will be implemented
-    console.log('API: getMessages called (placeholder)', threadId);
-    return { success: true, data: [] };
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/threads/${encodeURIComponent(threadId)}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error ${response.status}`);
+      }
+      const json = await response.json();
+      return { success: true, data: json.messages || [] };
+    } catch (error) {
+      console.error('API: getMessages failed', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to fetch messages' };
+    }
   },
 
   /**
@@ -169,18 +195,47 @@ export const api = {
    * Mark a conversation as read
    */
   async markAsRead(conversationId: string): Promise<ApiResponse<void>> {
-    // Placeholder - will be implemented
-    console.log('API: markAsRead called (placeholder)', conversationId);
-    return { success: true };
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/conversations/${encodeURIComponent(conversationId)}/read`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error ${response.status}`);
+      }
+      return { success: true };
+    } catch (error) {
+      console.error('API: markAsRead failed', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to mark as read' };
+    }
   },
 
   /**
    * Create a new thread
    */
   async createThread(conversationId: string, title: string, topic?: string): Promise<ApiResponse<Thread>> {
-    // Placeholder - will be implemented
-    console.log('API: createThread called (placeholder)', conversationId, title, topic);
-    return { success: true, data: undefined };
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/threads`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ conversation_id: conversationId, title, topic }),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error ${response.status}`);
+      }
+      const json = await response.json();
+      return { success: true, data: json.thread };
+    } catch (error) {
+      console.error('API: createThread failed', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to create thread' };
+    }
   },
 
   /**

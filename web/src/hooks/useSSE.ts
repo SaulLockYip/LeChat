@@ -139,8 +139,7 @@ export function useSSE({
   }, [updateStatus]);
 
   const send = useCallback((message: object) => {
-    // SSE is read-only, but this can be used for logging/debugging
-    console.log('useSSE: send called (SSE is receive-only)', message);
+    // SSE is read-only - no-op
   }, []);
 
   const clearMessages = useCallback(() => {
