@@ -12,3 +12,5 @@ export type { BadgeProps } from './Badge';
 
 export { LEDIndicator } from './LEDIndicator';
 export type { LEDIndicatorProps } from './LEDIndicator';
+
+export { TokenInputModal } from './TokenInputModal';

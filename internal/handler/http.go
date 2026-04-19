@@ -152,10 +152,14 @@ func SetupRouter(db *sql.DB, jsonl *dbpkg.JSONLManager, sseBroadcaster *SSEBroad
 	apiMux.HandleFunc("/agents", handler.ListAgents)
 
 	// Conversations - unified handler for all methods
-	apiMux.HandleFunc("/conversations/", handler.ConversationsHandler)
+	// Register both with and without trailing slash (ServeMux requires exact match)
+	apiMux.HandleFunc("/api/conversations", handler.ConversationsHandler)
+	apiMux.HandleFunc("/api/conversations/", handler.ConversationsHandler)
 
 	// Threads - unified handler for all methods
-	apiMux.HandleFunc("/threads/", handler.ThreadsHandler)
+	// Register both with and without trailing slash (ServeMux requires exact match)
+	apiMux.HandleFunc("/api/threads", handler.ThreadsHandler)
+	apiMux.HandleFunc("/api/threads/", handler.ThreadsHandler)
 
 	// Messages (single method)
 	apiMux.HandleFunc("/messages", handler.SendMessage)
