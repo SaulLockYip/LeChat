@@ -148,24 +148,20 @@ func SetupRouter(db *sql.DB, jsonl *dbpkg.JSONLManager, sseBroadcaster *SSEBroad
 	// API routes - register first so they take precedence
 	apiMux := http.NewServeMux()
 
-	// GET endpoints (authenticated)
+	// Agents (single method)
 	apiMux.HandleFunc("/agents", handler.ListAgents)
-	apiMux.HandleFunc("/conversations", handler.ListConversations)
-	apiMux.HandleFunc("/conversations/", handler.GetConversation)
-	apiMux.HandleFunc("/threads/", handler.GetThread)
 
-	// POST endpoints
-	apiMux.HandleFunc("/conversations", handler.CreateConversation)
-	apiMux.HandleFunc("/threads", handler.CreateThread)
+	// Conversations - unified handler for all methods
+	apiMux.HandleFunc("/conversations/", handler.ConversationsHandler)
+
+	// Threads - unified handler for all methods
+	apiMux.HandleFunc("/threads/", handler.ThreadsHandler)
+
+	// Messages (single method)
 	apiMux.HandleFunc("/messages", handler.SendMessage)
 
-	// PUT endpoints
-	apiMux.HandleFunc("/conversations/", handler.UpdateConversation)
-	apiMux.HandleFunc("/threads/", handler.UpdateThread)
+	// User (single method)
 	apiMux.HandleFunc("/user", handler.UpdateUser)
-
-	// DELETE endpoints
-	apiMux.HandleFunc("/conversations/", handler.DeleteConversation)
 
 	// Apply auth middleware to /api routes
 	authenticatedMux := handler.auth.RequireAuth(apiMux)
@@ -492,6 +488,46 @@ func extractID(path, prefix string) string {
 		return ""
 	}
 	return id
+}
+
+// ConversationsHandler handles all /api/conversations/* methods
+func (h *Handler) ConversationsHandler(w http.ResponseWriter, r *http.Request) {
+	// Check if this is /conversations (list/create) or /conversations/:id (get/update/delete)
+	path := r.URL.Path
+	isListPath := path == "/api/conversations" || path == "/api/conversations/"
+
+	switch {
+	case isListPath && r.Method == http.MethodGet:
+		h.ListConversations(w, r)
+	case isListPath && r.Method == http.MethodPost:
+		h.CreateConversation(w, r)
+	case !isListPath && r.Method == http.MethodGet:
+		h.GetConversation(w, r)
+	case !isListPath && r.Method == http.MethodPut:
+		h.UpdateConversation(w, r)
+	case !isListPath && r.Method == http.MethodDelete:
+		h.DeleteConversation(w, r)
+	default:
+		JSONError(w, http.StatusMethodNotAllowed, "Method not allowed", "method_not_allowed")
+	}
+}
+
+// ThreadsHandler handles all /api/threads/* methods
+func (h *Handler) ThreadsHandler(w http.ResponseWriter, r *http.Request) {
+	// Check if this is /threads (create) or /threads/:id (get/update)
+	path := r.URL.Path
+	isListPath := path == "/api/threads" || path == "/api/threads/"
+
+	switch {
+	case isListPath && r.Method == http.MethodPost:
+		h.CreateThread(w, r)
+	case !isListPath && r.Method == http.MethodGet:
+		h.GetThread(w, r)
+	case !isListPath && r.Method == http.MethodPut:
+		h.UpdateThread(w, r)
+	default:
+		JSONError(w, http.StatusMethodNotAllowed, "Method not allowed", "method_not_allowed")
+	}
 }
 
 // ErrorResponse represents an API error response

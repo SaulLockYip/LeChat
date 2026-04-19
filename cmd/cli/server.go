@@ -92,7 +92,7 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 	execCmd.Start()
 
 	fmt.Println("Server started")
-	fmt.Printf("Web UI: http://localhost:%s\n", cfg.HTTPPort)
+	fmt.Printf("Web UI: http://localhost:%s/#token=%s\n", cfg.HTTPPort, cfg.GetToken())
 	fmt.Printf("API:    http://localhost:%s/api\n", cfg.HTTPPort)
 	return nil
 }
@@ -192,7 +192,7 @@ func runServerRestart(cmd *cobra.Command, args []string) error {
 	execCmd.Start()
 
 	fmt.Println("Server restarted")
-	fmt.Printf("Web UI: http://localhost:%s\n", cfg.HTTPPort)
+	fmt.Printf("Web UI: http://localhost:%s/#token=%s\n", cfg.HTTPPort, cfg.GetToken())
 	fmt.Printf("API:    http://localhost:%s/api\n", cfg.HTTPPort)
 	return nil
 }

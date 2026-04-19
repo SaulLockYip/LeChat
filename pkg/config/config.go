@@ -10,6 +10,15 @@ type Config struct {
 	OpenclawDir string `json:"openclaw_dir"`
 	LechatDir  string `json:"lechat_dir"`
 	HTTPPort   string `json:"http_port"`
+	User       User   `json:"user"`
+}
+
+// User represents the user section in config
+type User struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Title string `json:"title"`
+	Token string `json:"token"`
 }
 
 func (c *Config) DBPath() string {
@@ -22,6 +31,11 @@ func (c *Config) SocketPath() string {
 
 func (c *Config) MessagePath() string {
 	return filepath.Join(c.LechatDir, "messages")
+}
+
+// GetToken returns the user token
+func (c *Config) GetToken() string {
+	return c.User.Token
 }
 
 func LoadConfig(configPath string) (*Config, error) {
