@@ -2,6 +2,8 @@
 
 import { useState, useCallback } from 'react';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:28275';
+
 export interface ThreadPreview {
   id: string;
   title: string;
@@ -41,7 +43,12 @@ export function useThreads(): UseThreadsReturn {
     setError(null);
 
     try {
-      const response = await fetch(`/api/conversations/${conversationId}`);
+      // Fetch conversation to get thread_ids
+      const response = await fetch(`${API_BASE_URL}/api/conversations/${conversationId}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
       if (!response.ok) {
         throw new Error('Failed to fetch conversation');
       }
@@ -54,7 +61,11 @@ export function useThreads(): UseThreadsReturn {
       const threadPreviews: ThreadPreview[] = await Promise.all(
         threadIds.map(async (id: string, index: number) => {
           try {
-            const threadResponse = await fetch(`/api/threads/${id}`);
+            const threadResponse = await fetch(`${API_BASE_URL}/api/threads/${id}`, {
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`,
+              },
+            });
             if (threadResponse.ok) {
               const threadData = await threadResponse.json();
               const thread = threadData.thread;

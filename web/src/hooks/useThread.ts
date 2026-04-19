@@ -2,6 +2,8 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:28275';
+
 export interface Message {
   id: string;
   content: string;
@@ -136,8 +138,8 @@ export function useThread(): UseThreadReturn {
     try {
       // Fetch thread and agents in parallel
       const [threadResponse, agentsResponse] = await Promise.all([
-        fetch(`/api/threads/${threadId}`),
-        fetch('/api/agents'),
+        fetch(`${API_BASE_URL}/api/threads/${threadId}`),
+        fetch(`${API_BASE_URL}/api/agents`),
       ]);
 
       if (!threadResponse.ok) {
