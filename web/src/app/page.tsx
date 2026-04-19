@@ -59,6 +59,28 @@ export default function HomePage() {
     setHasToken(true);
   }, []);
 
+  // Connect to SSE for real-time updates (unconditional to satisfy hooks rule)
+  const { status: sseStatus } = useSSE({
+    url: sseUrl,
+    autoConnect: hasToken === true,
+    onMessage: (message) => {
+      // The actual event type is in message.data.type since SSE uses default 'message' type
+      const eventData = message.data as { type?: string; thread_id?: string; conv_id?: string };
+      if (eventData?.type === 'new_message') {
+        // Update messages if the message is for the currently selected thread
+        if (selectedThreadId && eventData?.thread_id === selectedThreadId) {
+          // Thread messages will be refreshed by the useThread hook
+          // or we could manually fetch new messages here
+        }
+      } else if (eventData?.type === 'thread_updated') {
+        // Refresh thread list to show latest message info
+        if (selectedConversationId) {
+          fetchThreadsForConversation(selectedConversationId);
+        }
+      }
+    },
+  });
+
   // Show loading state while checking for token
   if (hasToken === null) {
     return (
@@ -79,28 +101,6 @@ export default function HomePage() {
       </main>
     );
   }
-
-  // Connect to SSE for real-time updates
-  const { status: sseStatus } = useSSE({
-    url: sseUrl,
-    autoConnect: true,
-    onMessage: (message) => {
-      // The actual event type is in message.data.type since SSE uses default 'message' type
-      const eventData = message.data as { type?: string; thread_id?: string; conv_id?: string };
-      if (eventData?.type === 'new_message') {
-        // Update messages if the message is for the currently selected thread
-        if (selectedThreadId && eventData?.thread_id === selectedThreadId) {
-          // Thread messages will be refreshed by the useThread hook
-          // or we could manually fetch new messages here
-        }
-      } else if (eventData?.type === 'thread_updated') {
-        // Refresh thread list to show latest message info
-        if (selectedConversationId) {
-          fetchThreadsForConversation(selectedConversationId);
-        }
-      }
-    },
-  });
 
   // When a conversation is selected, fetch its threads
   const handleConversationSelect = useCallback((conversationId: string) => {
