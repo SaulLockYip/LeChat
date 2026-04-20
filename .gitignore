@@ -5,6 +5,9 @@ docs/
 *.md
 !README.md
 
+# Video introduction materials
+introduction_video/
+
 # Dependencies
 vendor/
 node_modules/
