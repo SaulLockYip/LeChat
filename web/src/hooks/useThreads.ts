@@ -23,6 +23,7 @@ interface UseThreadsReturn {
   selectThread: (threadId: string) => void;
   clearThreads: () => void;
   fetchThreadsForConversation: (conversationId: string, token: string) => Promise<void>;
+  updateThreadTimestamp: (threadId: string, timestamp: string) => void;
 }
 
 export function useThreads(): UseThreadsReturn {
@@ -39,6 +40,14 @@ export function useThreads(): UseThreadsReturn {
   const clearThreads = useCallback(() => {
     setThreads([]);
     setSelectedThreadId(null);
+  }, []);
+
+  const updateThreadTimestamp = useCallback((threadId: string, timestamp: string) => {
+    setThreads(prev => prev.map(thread =>
+      thread.id === threadId
+        ? { ...thread, timestamp }
+        : thread
+    ));
   }, []);
 
   const fetchThreadsForConversation = useCallback(async (conversationId: string, token: string) => {
@@ -120,5 +129,6 @@ export function useThreads(): UseThreadsReturn {
     selectThread,
     clearThreads,
     fetchThreadsForConversation,
+    updateThreadTimestamp,
   };
 }

@@ -19,6 +19,7 @@ function AppContent() {
     isLoading: isLoadingThreads,
     selectThread: selectThreadInThreads,
     fetchThreadsForConversation,
+    updateThreadTimestamp,
   } = useThreads();
 
   const {
@@ -40,13 +41,11 @@ function AppContent() {
     url: sseUrl,
     autoConnect: true,
     onMessage: (message) => {
-      const eventData = message.data as { type?: string; thread_id?: string; conv_id?: string };
+      const eventData = message.data as { type?: string; thread_id?: string; conv_id?: string; latest_message_at?: string };
       if (eventData?.type === 'thread_updated') {
-        if (selectedConversationId) {
-          const token = localStorage.getItem('token');
-          if (token) {
-            fetchThreadsForConversation(selectedConversationId, token);
-          }
+        // Update thread timestamp directly from SSE event (avoids re-fetch)
+        if (eventData.thread_id && eventData.latest_message_at) {
+          updateThreadTimestamp(eventData.thread_id, eventData.latest_message_at);
         }
       } else if (eventData?.type === 'new_message') {
         // Refresh messages for the current thread when a new message arrives
