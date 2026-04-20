@@ -142,10 +142,6 @@ func SetupRouter(db *sql.DB, jsonl *dbpkg.JSONLManager, sseBroadcaster *SSEBroad
 	userRepo := dbpkg.NewUserRepository(db)
 	handler := NewHandler(db, jsonl, NewSSEHandler(sseBroadcaster, userRepo), writeQueue, notifyQueue)
 
-	log.Printf("[DEBUG] Web root: %s", webRoot)
-	log.Printf("[DEBUG] Static dir: %s", staticDir)
-	log.Printf("[DEBUG] Index file: %s", indexFile)
-
 	// API routes - register first so they take precedence
 	apiMux := http.NewServeMux()
 

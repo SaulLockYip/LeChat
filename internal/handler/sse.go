@@ -65,14 +65,12 @@ func (b *SSEBroadcaster) run() {
 			b.clientsMu.Lock()
 			b.clients[client.ID] = client
 			b.clientsMu.Unlock()
-			log.Printf("SSE client connected (total: %d)", len(b.clients))
 
 		case clientID := <-b.unregister:
 			b.clientsMu.Lock()
 			if client, exists := b.clients[clientID]; exists {
 				delete(b.clients, clientID)
 				close(client.Channel)
-				log.Printf("SSE client disconnected (total: %d)", len(b.clients))
 			}
 			b.clientsMu.Unlock()
 
