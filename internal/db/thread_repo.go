@@ -54,6 +54,23 @@ func (r *ThreadRepository) GetThread(id string) (*models.Thread, error) {
 	return &thread, nil
 }
 
+// UpdateThreadTimestamp updates only the updated_at field of a thread
+func (r *ThreadRepository) UpdateThreadTimestamp(id string, timestamp string) error {
+	query := `UPDATE thread SET updated_at = ? WHERE id = ?`
+	result, err := r.db.Exec(query, timestamp, id)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (r *ThreadRepository) UpdateThread(thread *models.Thread) error {
 	openclawSessionsJSON, err := json.Marshal(thread.OpenclawSessions)
 	if err != nil {

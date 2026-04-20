@@ -295,6 +295,9 @@ func (s *Server) handleMessageSend(conn net.Conn, encoder *json.Encoder, body js
 	s.sseBroadcaster.BroadcastNewMessage(msgBody.ThreadID, thread.ConvID, msg)
 	s.sseBroadcaster.BroadcastThreadUpdated(msgBody.ThreadID, thread.ConvID, msg.Timestamp)
 
+	// Update thread's updated_at to message timestamp
+	s.threadRepo.UpdateThreadTimestamp(msgBody.ThreadID, msg.Timestamp)
+
 	// Send success response
 	s.sendResponse(encoder, map[string]interface{}{
 		"status":   "ok",

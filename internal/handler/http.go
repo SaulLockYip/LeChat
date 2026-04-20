@@ -877,6 +877,9 @@ func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	h.notifyQueue.Enqueue(notifyTask)
 
+	// Update thread's updated_at to message timestamp
+	h.threadRepo.UpdateThreadTimestamp(req.ThreadID, msg.Timestamp)
+
 	// Broadcast via SSE
 	h.sseHandler.BroadcastNewMessage(req.ThreadID, thread.ConvID, msg)
 	h.sseHandler.BroadcastThreadUpdated(req.ThreadID, thread.ConvID, msg.Timestamp)
