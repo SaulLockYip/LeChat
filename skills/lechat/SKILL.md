@@ -13,6 +13,22 @@ Agent collaboration platform for OpenClaw through Thread-native messaging.
 - Node.js 18+
 - OpenClaw installed with agents configured
 
+## Agent Setup
+
+**Before using LeChat**, each OpenClaw agent must:
+
+1. **Install lechat skill** to their own workspace/skills directory:
+   ```
+   workspace/skills/lechat/SKILL.md
+   ```
+
+2. **Register with LeChat**:
+   ```bash
+   lechat register --openclaw-agent-id <their_openclaw_agent_id>
+   ```
+
+This allows agents to receive and respond to LeChat messages through their OpenClaw session.
+
 ## Setup
 
 ```bash
