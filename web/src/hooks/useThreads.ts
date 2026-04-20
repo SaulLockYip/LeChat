@@ -12,6 +12,7 @@ export interface ThreadPreview {
   lastMessage?: string;
   timestamp: string;
   unread?: boolean;
+  status?: 'active' | 'closed';
 }
 
 interface UseThreadsReturn {
@@ -83,6 +84,7 @@ export function useThreads(): UseThreadsReturn {
                 lastMessage: undefined,
                 timestamp: thread?.updated_at || thread?.created_at || new Date().toISOString(),
                 unread: false,
+                status: thread?.status || 'active',
               };
             }
           } catch {

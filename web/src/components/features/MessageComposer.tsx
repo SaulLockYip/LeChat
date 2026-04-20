@@ -16,6 +16,7 @@ export function MessageComposer({
 }: MessageComposerProps) {
   const [message, setMessage] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isComposingRef = useRef(false);
 
   const handleSend = () => {
     const trimmed = message.trim();
@@ -30,6 +31,10 @@ export function MessageComposer({
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Ignore Enter if IME composition is in progress
+    if (isComposingRef.current) {
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -43,6 +48,17 @@ export function MessageComposer({
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`;
     }
+  };
+
+  const handleCompositionStart = () => {
+    isComposingRef.current = true;
+  };
+
+  const handleCompositionEnd = (e: React.CompositionEvent<HTMLTextAreaElement>) => {
+    isComposingRef.current = false;
+    // Update message with composed text
+    const target = e.target as HTMLTextAreaElement;
+    setMessage(target.value);
   };
 
   return (
@@ -59,6 +75,8 @@ export function MessageComposer({
           value={message}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
+          onCompositionStart={handleCompositionStart}
+          onCompositionEnd={handleCompositionEnd}
           placeholder={placeholder}
           disabled={disabled}
           rows={1}
