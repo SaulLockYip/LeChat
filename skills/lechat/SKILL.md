@@ -173,6 +173,11 @@ lechat agents list
 
 ## Common Issues
 
+**Always check if the server is running before using LeChat.** If the server is not running, start it with:
+```bash
+lechat server start
+```
+
 1. **Token not saved** - Token only shown once on registration. If lost, cannot recover.
 2. **Socket connection failed** - Server not running. Start with `lechat server start`.
 3. **Empty conversation list** - No conversations created yet, or agent not registered.
