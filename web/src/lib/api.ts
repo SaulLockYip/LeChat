@@ -6,10 +6,108 @@
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
+export interface ApiError extends Error {
+  status?: number;
+  isNetworkError?: boolean;
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;
   error?: string;
+}
+
+// Error message mappings for HTTP status codes
+const ERROR_MESSAGES: Record<number, string> = {
+  401: 'Session expired. Please refresh the page.',
+  403: 'You do not have permission to perform this action.',
+  404: 'The requested resource was not found.',
+  500: 'Server error. Please try again later.',
+  502: 'Service temporarily unavailable.',
+  503: 'Service temporarily unavailable. Please try again later.',
+};
+
+// Default messages for network errors
+const NETWORK_ERROR_MESSAGE = 'Unable to connect. Please check your connection.';
+const GENERIC_ERROR_MESSAGE = 'An unexpected error occurred. Please try again.';
+
+/**
+ * Creates an ApiError with appropriate message based on HTTP status or error type
+ */
+function createApiError(error: unknown, response?: Response): ApiError {
+  if (!response) {
+    // Network error (no response)
+    return {
+      name: 'NetworkError',
+      message: NETWORK_ERROR_MESSAGE,
+      isNetworkError: true,
+    };
+  }
+
+  const status = response.status;
+
+  if (status === 401) {
+    return {
+      name: 'UnauthorizedError',
+      message: ERROR_MESSAGES[401],
+      status,
+    };
+  }
+
+  if (status === 403) {
+    return {
+      name: 'ForbiddenError',
+      message: ERROR_MESSAGES[403],
+      status,
+    };
+  }
+
+  if (status === 404) {
+    return {
+      name: 'NotFoundError',
+      message: ERROR_MESSAGES[404],
+      status,
+    };
+  }
+
+  if (status >= 500) {
+    return {
+      name: 'ServerError',
+      message: ERROR_MESSAGES[status] || GENERIC_ERROR_MESSAGE,
+      status,
+    };
+  }
+
+  // For other HTTP errors, use the status text or a generic message
+  return {
+    name: 'ApiError',
+    message: `Request failed with status ${status}`,
+    status,
+  };
+}
+
+/**
+ * Checks if an error is an ApiError (has status or isNetworkError properties)
+ */
+function isApiError(error: unknown): error is ApiError {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (('status' in error && typeof (error as ApiError).status === 'number') ||
+      ('isNetworkError' in error && (error as ApiError).isNetworkError === true))
+  );
+}
+
+/**
+ * Extracts error message from response body or returns a fallback
+ */
+async function extractErrorMessage(response: Response): Promise<string> {
+  try {
+    const data = await response.json();
+    return data.error || data.message || ERROR_MESSAGES[response.status] || `Request failed with status ${response.status}`;
+  } catch {
+    return ERROR_MESSAGES[response.status] || `Request failed with status ${response.status}`;
+  }
 }
 
 // Agent types
@@ -64,6 +162,15 @@ export interface Attachment {
   size?: number;
 }
 
+// Backend message format (different from frontend Message)
+export interface BackendMessage {
+  id: number;
+  from: string;
+  content: string;
+  timestamp: string;
+  file_path?: string;
+}
+
 // API functions - Placeholder implementations
 // These will be implemented in future phases when backend is ready
 
@@ -80,13 +187,16 @@ export const api = {
         },
       });
       if (!response.ok) {
-        throw new Error(`HTTP error ${response.status}`);
+        const error = createApiError(null, response);
+        error.message = await extractErrorMessage(response);
+        throw error;
       }
       const data = await response.json();
       return { success: true, data };
     } catch (error) {
       console.error('API: getAgents failed', error);
-      return { success: false, error: error instanceof Error ? error.message : 'Failed to fetch agents' };
+      const apiError = isApiError(error) ? error : createApiError(error);
+      return { success: false, error: apiError.message };
     }
   },
 
@@ -103,7 +213,9 @@ export const api = {
         },
       });
       if (!response.ok) {
-        throw new Error(`HTTP error ${response.status}`);
+        const error = createApiError(null, response);
+        error.message = await extractErrorMessage(response);
+        throw error;
       }
       const json = await response.json();
       // Backend returns {conversations: [...]} - extract the array
@@ -111,7 +223,8 @@ export const api = {
       return { success: true, data: conversations };
     } catch (error) {
       console.error('API: getConversations failed', error);
-      return { success: false, error: error instanceof Error ? error.message : 'Failed to fetch conversations' };
+      const apiError = isApiError(error) ? error : createApiError(error);
+      return { success: false, error: apiError.message };
     }
   },
 
@@ -127,13 +240,16 @@ export const api = {
         },
       });
       if (!response.ok) {
-        throw new Error(`HTTP error ${response.status}`);
+        const error = createApiError(null, response);
+        error.message = await extractErrorMessage(response);
+        throw error;
       }
       const json = await response.json();
       return { success: true, data: json.threads || [] };
     } catch (error) {
       console.error('API: getThreads failed', error);
-      return { success: false, error: error instanceof Error ? error.message : 'Failed to fetch threads' };
+      const apiError = isApiError(error) ? error : createApiError(error);
+      return { success: false, error: apiError.message };
     }
   },
 
@@ -149,13 +265,42 @@ export const api = {
         },
       });
       if (!response.ok) {
-        throw new Error(`HTTP error ${response.status}`);
+        const error = createApiError(null, response);
+        error.message = await extractErrorMessage(response);
+        throw error;
       }
       const json = await response.json();
       return { success: true, data: json.messages || [] };
     } catch (error) {
       console.error('API: getMessages failed', error);
-      return { success: false, error: error instanceof Error ? error.message : 'Failed to fetch messages' };
+      const apiError = isApiError(error) ? error : createApiError(error);
+      return { success: false, error: apiError.message };
+    }
+  },
+
+  /**
+   * Get thread with messages
+   * Backend returns { thread: {...}, messages: [...] }
+   */
+  async getThread(threadId: string): Promise<ApiResponse<{ thread: { id: string; title?: string; topic?: string }; messages: BackendMessage[] }>> {
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/threads/${encodeURIComponent(threadId)}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const error = createApiError(null, response);
+        error.message = await extractErrorMessage(response);
+        throw error;
+      }
+      const json = await response.json();
+      return { success: true, data: json };
+    } catch (error) {
+      console.error('API: getThread failed', error);
+      const apiError = isApiError(error) ? error : createApiError(error);
+      return { success: false, error: apiError.message };
     }
   },
 
@@ -180,14 +325,16 @@ export const api = {
         body: JSON.stringify(data),
       });
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Failed to send message' }));
-        return { success: false, error: error.error || 'Failed to send message' };
+        const error = createApiError(null, response);
+        error.message = await extractErrorMessage(response);
+        throw error;
       }
       const json = await response.json();
       return { success: true, data: json.message };
     } catch (error) {
       console.error('API: sendMessage failed', error);
-      return { success: false, error: error instanceof Error ? error.message : 'Failed to send message' };
+      const apiError = isApiError(error) ? error : createApiError(error);
+      return { success: false, error: apiError.message };
     }
   },
 
@@ -204,12 +351,15 @@ export const api = {
         },
       });
       if (!response.ok) {
-        throw new Error(`HTTP error ${response.status}`);
+        const error = createApiError(null, response);
+        error.message = await extractErrorMessage(response);
+        throw error;
       }
       return { success: true };
     } catch (error) {
       console.error('API: markAsRead failed', error);
-      return { success: false, error: error instanceof Error ? error.message : 'Failed to mark as read' };
+      const apiError = isApiError(error) ? error : createApiError(error);
+      return { success: false, error: apiError.message };
     }
   },
 
@@ -228,13 +378,35 @@ export const api = {
         body: JSON.stringify({ conversation_id: conversationId, title, topic }),
       });
       if (!response.ok) {
-        throw new Error(`HTTP error ${response.status}`);
+        const error = createApiError(null, response);
+        error.message = await extractErrorMessage(response);
+        throw error;
       }
       const json = await response.json();
       return { success: true, data: json.thread };
     } catch (error) {
       console.error('API: createThread failed', error);
-      return { success: false, error: error instanceof Error ? error.message : 'Failed to create thread' };
+      const apiError = isApiError(error) ? error : createApiError(error);
+      return { success: false, error: apiError.message };
+    }
+  },
+
+  /**
+   * Get current user info
+   */
+  async getUserInfo(): Promise<ApiResponse<{ id: string; name: string; title: string; created_at: string; updated_at: string }>> {
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/user/info`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error ${response.status}`);
+      }
+      const data = await response.json();
+      return { success: true, data };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to fetch user info' };
     }
   },
 

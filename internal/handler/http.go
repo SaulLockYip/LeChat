@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -167,6 +168,7 @@ func SetupRouter(db *sql.DB, jsonl *dbpkg.JSONLManager, sseBroadcaster *SSEBroad
 
 	// User (single method)
 	apiMux.HandleFunc("/api/user", handler.UpdateUser)
+	apiMux.HandleFunc("/api/user/info", handler.GetUserInfo)
 
 	// Apply auth middleware to /api routes
 	authenticatedMux := handler.auth.RequireAuth(apiMux)
@@ -174,6 +176,9 @@ func SetupRouter(db *sql.DB, jsonl *dbpkg.JSONLManager, sseBroadcaster *SSEBroad
 
 	// SSE events (no auth - handled differently)
 	mux.HandleFunc("/api/events", handler.sseHandler.HandleSSE)
+
+	// Files endpoint (no auth middleware - ServeFile handles its own auth via token query param)
+	mux.HandleFunc("/api/files", handler.ServeFile)
 
 	// Health check (no auth)
 	mux.HandleFunc("/health", handler.HealthCheck)
@@ -406,11 +411,27 @@ func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ServeFile handles GET /api/files?path={encoded_file_path}
+// ServeFile handles GET /api/files?path={encoded_file_path}&token={user_token}
 func (h *Handler) ServeFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
+	}
+
+	// Verify token from query param (same as SSE)
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		// Fall back to Authorization header for browser fetch with credentials
+		authHeader := r.Header.Get("Authorization")
+		if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
+			token = strings.TrimPrefix(authHeader, "Bearer ")
+		}
+	}
+	if token != "" {
+		if _, err := h.userRepo.GetUserByToken(token); err != nil || token == "" {
+			http.Error(w, "Unauthorized: invalid token", http.StatusUnauthorized)
+			return
+		}
 	}
 
 	filePath := r.URL.Query().Get("path")
@@ -693,13 +714,48 @@ func (h *Handler) CreateThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Generate thread ID upfront for use in session injection
+	threadID := strings.ToLower(uuid.New().String())
+
+	// For each agent in the conversation, inject session and collect OpenclawSession info
+	var openclawSessions []models.OpenclawSession
+	for _, lechatAgentID := range conv.AgentIDs {
+		a, err := h.agentRepo.GetAgentByID(lechatAgentID)
+		if err != nil {
+			log.Printf("Error looking up agent %s: %v", lechatAgentID, err)
+			continue
+		}
+		if a == nil {
+			log.Printf("Agent %s not found", lechatAgentID)
+			continue
+		}
+
+		// Generate unique UUID v4 (lowercase) for session
+		sessionID := strings.ToLower(uuid.New().String())
+
+		// Inject into each agent's sessions.json using jq
+		sessionKey := fmt.Sprintf("agent:%s:lechat:%s", a.OpenclawAgentID, threadID)
+		sessionValue := fmt.Sprintf(`{"sessionId": "%s"}`, sessionID)
+
+		if err := injectSession(a.OpenclawAgentDir, sessionKey, sessionValue); err != nil {
+			log.Printf("Error injecting session for agent %s: %v", lechatAgentID, err)
+			continue
+		}
+
+		openclawSessions = append(openclawSessions, models.OpenclawSession{
+			LechatAgentID:   lechatAgentID,
+			OpenclawAgentID: a.OpenclawAgentID,
+			SessionID:       sessionID,
+		})
+	}
+
 	now := time.Now().UTC().Format(time.RFC3339)
 	thread := &models.Thread{
-		ID:               generateUUID(),
+		ID:               threadID,
 		ConvID:           req.ConvID,
 		Topic:            req.Topic,
 		Status:           "active",
-		OpenclawSessions: []models.OpenclawSession{},
+		OpenclawSessions: openclawSessions,
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
@@ -1022,6 +1078,22 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	JSONResponse(w, http.StatusOK, user)
 }
 
+// GetUserInfo handles GET /api/user/info
+func (h *Handler) GetUserInfo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		JSONError(w, http.StatusMethodNotAllowed, "Method not allowed", "method_not_allowed")
+		return
+	}
+
+	user := GetUserFromContext(r)
+	if user == nil {
+		JSONError(w, http.StatusUnauthorized, "User not authenticated", "unauthenticated")
+		return
+	}
+
+	JSONResponse(w, http.StatusOK, user)
+}
+
 // DeleteConversation handles DELETE /api/conversations/:id
 func (h *Handler) DeleteConversation(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
@@ -1060,4 +1132,38 @@ func (h *Handler) DeleteConversation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	JSONResponse(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+// injectSession injects a session into an agent's sessions.json file
+func injectSession(agentDir, sessionKey, sessionValue string) error {
+	sessionsPath := filepath.Join(agentDir, "sessions", "sessions.json")
+	backupPath := sessionsPath + ".bak"
+
+	// Create backup
+	input, err := os.ReadFile(sessionsPath)
+	if err != nil {
+		return fmt.Errorf("failed to read sessions.json: %w", err)
+	}
+
+	if err := os.WriteFile(backupPath, input, 0644); err != nil {
+		return fmt.Errorf("failed to create backup: %w", err)
+	}
+
+	// Use jq to inject the new session safely using --arg to prevent injection
+	jqCmd := exec.Command("jq", "--arg", "key", sessionKey, "--argjson", "value", sessionValue, ". + {($key): ($value)}", sessionsPath)
+
+	output, err := jqCmd.Output()
+	if err != nil {
+		// Restore backup on failure
+		os.Rename(backupPath, sessionsPath)
+		return fmt.Errorf("jq command failed: %w", err)
+	}
+
+	if err := os.WriteFile(sessionsPath, output, 0644); err != nil {
+		// Restore backup on failure
+		os.Rename(backupPath, sessionsPath)
+		return fmt.Errorf("failed to write sessions.json: %w", err)
+	}
+
+	return nil
 }

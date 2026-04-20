@@ -43,16 +43,27 @@ function AppContent() {
       const eventData = message.data as { type?: string; thread_id?: string; conv_id?: string };
       if (eventData?.type === 'thread_updated') {
         if (selectedConversationId) {
-          fetchThreadsForConversation(selectedConversationId);
+          const token = localStorage.getItem('token');
+          if (token) {
+            fetchThreadsForConversation(selectedConversationId, token);
+          }
+        }
+      } else if (eventData?.type === 'new_message') {
+        // Refresh messages for the current thread when a new message arrives
+        if (selectedThreadId) {
+          selectThreadInThread(selectedThreadId);
         }
       }
     },
   });
 
-  // When a conversation is selected, fetch its threads
+  // Fetch threads when a conversation is selected - pass token explicitly
   const handleConversationSelect = useCallback((conversationId: string) => {
     setSelectedConversationId(conversationId);
-    fetchThreadsForConversation(conversationId);
+    const token = localStorage.getItem('token');
+    if (token) {
+      fetchThreadsForConversation(conversationId, token);
+    }
   }, [fetchThreadsForConversation]);
 
   // When a thread is selected, fetch its messages

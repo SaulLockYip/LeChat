@@ -1,8 +1,9 @@
 # Project docs (stored separately)
 docs/
 
-# Project files
+# Project files - exclude README.md
 *.md
+!README.md
 
 # Dependencies
 vendor/

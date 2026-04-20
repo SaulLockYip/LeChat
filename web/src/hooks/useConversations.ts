@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { api } from '../lib/api';
+import { useToast } from '../components/ui';
 
 export interface Agent {
   id: string;
@@ -82,6 +83,7 @@ interface UseConversationsReturn {
   markAsRead: (conversationId: string) => void;
   isLoading: boolean;
   error: string | null;
+  currentUser: { id: string; name: string; title: string } | null;
 }
 
 export function useConversations(): UseConversationsReturn {
@@ -92,16 +94,28 @@ export function useConversations(): UseConversationsReturn {
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; name: string; title: string } | null>(null);
+  const { addToast } = useToast();
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const [agentsResponse, conversationsResponse] = await Promise.all([
+      const [userResponse, agentsResponse, conversationsResponse] = await Promise.all([
+        api.getUserInfo(),
         api.getAgents(),
         api.getConversations(),
       ]);
+
+      // Store current user info
+      if (userResponse.success && userResponse.data) {
+        setCurrentUser({
+          id: userResponse.data.id,
+          name: userResponse.data.name,
+          title: userResponse.data.title,
+        });
+      }
 
       // Create map of lechat_agent_id -> openclaw_agent_id (name)
       const agentIdToName = new Map<string, string>();
@@ -137,13 +151,19 @@ export function useConversations(): UseConversationsReturn {
       }
 
       if (!agentsResponse.success) {
-        setError(prev => prev ? `${prev}; ${agentsResponse.error}` : agentsResponse.error || 'Failed to fetch agents');
+        const errorMsg = agentsResponse.error || 'Failed to fetch agents';
+        setError(prev => prev ? `${prev}; ${errorMsg}` : errorMsg);
+        addToast({ message: errorMsg, type: 'error' });
       }
       if (!conversationsResponse.success) {
-        setError(prev => prev ? `${prev}; ${conversationsResponse.error}` : conversationsResponse.error || 'Failed to fetch conversations');
+        const errorMsg = conversationsResponse.error || 'Failed to fetch conversations';
+        setError(prev => prev ? `${prev}; ${errorMsg}` : errorMsg);
+        addToast({ message: errorMsg, type: 'error' });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch data');
+      const errorMsg = err instanceof Error ? err.message : 'Failed to fetch data';
+      setError(errorMsg);
+      addToast({ message: errorMsg, type: 'error' });
     } finally {
       setIsLoading(false);
     }
@@ -182,5 +202,6 @@ export function useConversations(): UseConversationsReturn {
     markAsRead,
     isLoading,
     error,
+    currentUser,
   };
 }

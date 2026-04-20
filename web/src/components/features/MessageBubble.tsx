@@ -354,9 +354,10 @@ function AttachmentPreview({ filePath, isUser }: AttachmentPreviewProps) {
   const isUrl = filePath.startsWith('http://') || filePath.startsWith('https://');
   const attachmentType = getAttachmentType(filePath);
   const fileName = filePath.split('/').pop() || filePath;
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 
-  // For local files, use /api/files endpoint; for URLs, fetch directly
-  const fetchUrl = isUrl ? filePath : `/api/files?path=${encodeURIComponent(filePath)}`;
+  // For local files, use /api/files endpoint with token; for URLs, use directly
+  const fetchUrl = isUrl ? filePath : `/api/files?path=${encodeURIComponent(filePath)}&token=${token || ''}`;
   const needsFetch = ['md', 'csv', 'json', 'text'].includes(attachmentType);
 
   // Fetch content for text attachments (both local and URL)

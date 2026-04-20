@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { useToast } from '../components/ui';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:28275';
 
@@ -20,7 +21,7 @@ interface UseThreadsReturn {
   error: string | null;
   selectThread: (threadId: string) => void;
   clearThreads: () => void;
-  fetchThreadsForConversation: (conversationId: string) => Promise<void>;
+  fetchThreadsForConversation: (conversationId: string, token: string) => Promise<void>;
 }
 
 export function useThreads(): UseThreadsReturn {
@@ -28,6 +29,7 @@ export function useThreads(): UseThreadsReturn {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { addToast } = useToast();
 
   const selectThread = useCallback((threadId: string) => {
     setSelectedThreadId(threadId);
@@ -38,7 +40,12 @@ export function useThreads(): UseThreadsReturn {
     setSelectedThreadId(null);
   }, []);
 
-  const fetchThreadsForConversation = useCallback(async (conversationId: string) => {
+  const fetchThreadsForConversation = useCallback(async (conversationId: string, token: string) => {
+    if (!token) {
+      setError('No token available');
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -46,7 +53,7 @@ export function useThreads(): UseThreadsReturn {
       // Fetch conversation to get thread_ids
       const response = await fetch(`${API_BASE_URL}/api/conversations/${conversationId}`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${token}`,
         },
       });
       if (!response.ok) {
@@ -63,7 +70,7 @@ export function useThreads(): UseThreadsReturn {
           try {
             const threadResponse = await fetch(`${API_BASE_URL}/api/threads/${id}`, {
               headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                'Authorization': `Bearer ${token}`,
               },
             });
             if (threadResponse.ok) {
@@ -94,12 +101,14 @@ export function useThreads(): UseThreadsReturn {
 
       setThreads(threadPreviews);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch threads');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch threads';
+      setError(errorMessage);
+      addToast({ message: errorMessage, type: 'error' });
       setThreads([]);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [addToast]);
 
   return {
     threads,
