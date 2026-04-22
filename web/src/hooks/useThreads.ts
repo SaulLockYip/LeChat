@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useToast } from '../components/ui';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:28275';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 export interface ThreadPreview {
   id: string;
@@ -24,6 +24,7 @@ interface UseThreadsReturn {
   clearThreads: () => void;
   fetchThreadsForConversation: (conversationId: string, token: string) => Promise<void>;
   updateThreadTimestamp: (threadId: string, timestamp: string) => void;
+  updateThread: (threadId: string, data: { topic?: string; status?: 'active' | 'closed' }) => Promise<boolean>;
 }
 
 export function useThreads(): UseThreadsReturn {
@@ -49,6 +50,52 @@ export function useThreads(): UseThreadsReturn {
         : thread
     ));
   }, []);
+
+  const updateThread = useCallback(async (threadId: string, data: { topic?: string; status?: 'active' | 'closed' }): Promise<boolean> => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setError('No token available');
+      return false;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/threads/${encodeURIComponent(threadId)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to update thread: ${response.status}`);
+      }
+
+      const json = await response.json();
+
+      // Update local state with the updated thread
+      setThreads(prev => prev.map(thread =>
+        thread.id === threadId
+          ? {
+              ...thread,
+              title: json.thread?.topic || json.thread?.title || thread.title,
+              topic: json.thread?.topic || thread.topic,
+              status: json.thread?.status || thread.status,
+            }
+          : thread
+      ));
+
+      addToast({ message: 'Thread updated successfully', type: 'success' });
+      return true;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update thread';
+      setError(errorMessage);
+      addToast({ message: errorMessage, type: 'error' });
+      return false;
+    }
+  }, [addToast]);
 
   const fetchThreadsForConversation = useCallback(async (conversationId: string, token: string) => {
     if (!token) {
@@ -130,5 +177,6 @@ export function useThreads(): UseThreadsReturn {
     clearThreads,
     fetchThreadsForConversation,
     updateThreadTimestamp,
+    updateThread,
   };
 }

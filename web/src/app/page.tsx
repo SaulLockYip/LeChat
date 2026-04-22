@@ -2,15 +2,17 @@
 
 import { useCallback, useState, useEffect } from 'react';
 import { ThreeColumnLayout } from '@/components/layout/ThreeColumnLayout';
-import { TokenInputModal } from '@/components/ui';
+import { TokenInputModal, UserProfileModal, GroupSettingsModal, DeleteConversationModal } from '@/components/ui';
 import { useConversations } from '@/hooks/useConversations';
 import { useThread } from '@/hooks/useThread';
 import { useThreads } from '@/hooks/useThreads';
 import { useSSE } from '@/hooks/useSSE';
+import { api } from '@/lib/api';
 
 function AppContent() {
   const {
     conversations,
+    agents,
   } = useConversations();
 
   const {
@@ -20,6 +22,7 @@ function AppContent() {
     selectThread: selectThreadInThreads,
     fetchThreadsForConversation,
     updateThreadTimestamp,
+    updateThread,
   } = useThreads();
 
   const {
@@ -32,6 +35,28 @@ function AppContent() {
   } = useThread();
 
   const [selectedConversationId, setSelectedConversationId] = useState<string | undefined>();
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showGroupSettingsModal, setShowGroupSettingsModal] = useState(false);
+  const [deleteModalState, setDeleteModalState] = useState<{ isOpen: boolean; conversationId: string; conversationTitle: string; conversationType: 'dm' | 'channel' }>({
+    isOpen: false,
+    conversationId: '',
+    conversationTitle: '',
+    conversationType: 'channel',
+  });
+  const [currentUserName, setCurrentUserName] = useState<string>('User');
+  const [currentUserTitle, setCurrentUserTitle] = useState<string>('');
+
+  // Fetch user profile on mount
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      const result = await api.getUserInfo();
+      if (result.success && result.data) {
+        setCurrentUserName(result.data.name);
+        setCurrentUserTitle(result.data.title);
+      }
+    };
+    fetchUserProfile();
+  }, []);
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
   const sseUrl = token ? `/api/events?token=${token}` : undefined;
@@ -49,7 +74,8 @@ function AppContent() {
         }
       } else if (eventData?.type === 'new_message') {
         // Refresh messages for the current thread when a new message arrives
-        if (selectedThreadId) {
+        // Only refresh if the message's thread_id matches the currently selected thread
+        if (selectedThreadId && eventData.thread_id === selectedThreadId) {
           selectThreadInThread(selectedThreadId);
         }
       }
@@ -79,6 +105,42 @@ function AppContent() {
     retryMessage(messageId);
   }, [retryMessage]);
 
+  // Get selected conversation info for group settings
+  const selectedConversation = conversations.find(c => c.id === selectedConversationId);
+  const selectedConversationType = selectedConversation?.type;
+  const selectedConversationAgentIds = selectedConversation?.agentId ? [selectedConversation.agentId] : [];
+
+  // Handle group settings update
+  const handleGroupUpdate = useCallback(async (data: { group_name?: string; add_agent_ids?: string[]; remove_agent_ids?: string[] }) => {
+    if (!selectedConversationId) return;
+    await api.updateConversation(selectedConversationId, data);
+  }, [selectedConversationId]);
+
+  // Handle delete conversation request from conversation list
+  const handleDeleteConversation = useCallback((conversationId: string, conversationTitle: string) => {
+    const conversation = conversations.find(c => c.id === conversationId);
+    setDeleteModalState({
+      isOpen: true,
+      conversationId,
+      conversationTitle,
+      conversationType: conversation?.type || 'channel',
+    });
+  }, [conversations]);
+
+  // Handle confirm delete from modal
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deleteModalState.conversationId) return;
+    await api.deleteConversation(deleteModalState.conversationId);
+    // Close modal and refresh
+    setDeleteModalState(prev => ({ ...prev, isOpen: false }));
+    window.location.reload();
+  }, [deleteModalState.conversationId]);
+
+  // Handle cancel delete from modal
+  const handleCancelDelete = useCallback(() => {
+    setDeleteModalState(prev => ({ ...prev, isOpen: false }));
+  }, []);
+
   // Format conversations for ThreeColumnLayout
   const formattedConversations = conversations.map(conv => ({
     id: conv.id,
@@ -87,6 +149,8 @@ function AppContent() {
     lastMessage: conv.lastMessage,
     timestamp: conv.timestamp,
     unread: conv.unread,
+    agentId: conv.otherAgentId || conv.agentId,
+    otherAgentId: conv.agentId,
   }));
 
   return (
@@ -94,11 +158,15 @@ function AppContent() {
       <ThreeColumnLayout
         conversations={formattedConversations}
         selectedConversationId={selectedConversationId}
+        selectedConversationType={selectedConversationType}
         onConversationSelect={handleConversationSelect}
+        onDeleteConversation={handleDeleteConversation}
         conversationTitle="Conversations"
+        agents={agents}
         threads={threads}
         selectedThreadId={selectedThreadId || undefined}
         onThreadSelect={handleThreadSelect}
+        onUpdateThread={updateThread}
         isLoadingThreads={isLoadingThreads}
         threadTitle={thread?.title}
         threadTopic={thread?.topic}
@@ -106,6 +174,35 @@ function AppContent() {
         isLoadingMessages={isLoadingMessages}
         onSendMessage={handleSendMessage}
         onRetryMessage={handleRetryMessage}
+        currentUserName={currentUserName}
+        currentUserTitle={currentUserTitle}
+        onOpenProfile={() => setShowProfileModal(true)}
+        onOpenGroupSettings={() => setShowGroupSettingsModal(true)}
+      />
+      <UserProfileModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        onProfileUpdate={(profile) => {
+          setCurrentUserName(profile.name);
+          setCurrentUserTitle(profile.title);
+        }}
+      />
+      <GroupSettingsModal
+        isOpen={showGroupSettingsModal}
+        onClose={() => setShowGroupSettingsModal(false)}
+        conversationId={selectedConversationId || ''}
+        groupName={selectedConversation?.title || ''}
+        currentAgentIds={selectedConversationAgentIds}
+        availableAgents={agents}
+        onUpdate={handleGroupUpdate}
+        onDeleteConversation={handleDeleteConversation}
+      />
+      <DeleteConversationModal
+        isOpen={deleteModalState.isOpen}
+        conversationTitle={deleteModalState.conversationTitle}
+        conversationType={deleteModalState.conversationType}
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
       />
     </main>
   );

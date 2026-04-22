@@ -14,5 +14,8 @@ export { LEDIndicator } from './LEDIndicator';
 export type { LEDIndicatorProps } from './LEDIndicator';
 
 export { TokenInputModal } from './TokenInputModal';
+export { UserProfileModal } from './UserProfileModal';
+export { GroupSettingsModal } from './GroupSettingsModal';
+export { DeleteConversationModal } from './DeleteConversationModal';
 export { ToastProvider, Toaster, useToast } from './Toast';
 export type { Toast } from './Toast';

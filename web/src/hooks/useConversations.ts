@@ -21,6 +21,7 @@ export interface Conversation {
   id: string;
   type: 'dm' | 'channel';
   agentId?: string;
+  otherAgentId?: string; // For DMs, the second participant (for filtering)
   channelId?: string;
   title: string;
   lastMessage?: string;
@@ -63,6 +64,7 @@ function transformConversation(conv: BackendConversation, agentIdToName: Map<str
     id: conv.id,
     type,
     agentId: type === 'dm' ? conv.lechat_agent_ids?.[0] : undefined,
+    otherAgentId: type === 'dm' ? conv.lechat_agent_ids?.[1] : undefined,
     channelId: type === 'channel' ? conv.id : undefined,
     title,
     timestamp: conv.created_at,

@@ -53,6 +53,11 @@ lechat thread get --thread-id %s --token {yourLeChatTokenInTOOLS.md}
 
 💬 Reply (only if you have something to contribute):
 lechat message send --token {yourLeChatTokenInTOOLS.md} --thread-id %s --content "{your_reply}" [--mention '["%s"]'] [--file {filePath or validUrl}]`
+
+	// fileAttachmentTemplate is appended to message content when a file attachment exists
+	fileAttachmentTemplate = `
+
+📎 Attachment: %s`
 )
 
 // NotificationTask represents a notification task
@@ -154,22 +159,26 @@ func (q *NotificationQueue) notifyDM(task *NotificationTask) {
 	for _, session := range thread.OpenclawSessions {
 		if isUser {
 			// User sender: notify BOTH agents
-			q.executeNotification(session.SessionID, q.formatDMMessage(senderDisplay, task.Message))
+			q.executeNotification(session.SessionID, q.formatDMMessage(senderDisplay, task.Message, task.ThreadID))
 		} else if session.LechatAgentID != task.FromAgentID {
 			// Agent sender: notify the OTHER agent only
-			q.executeNotification(session.SessionID, q.formatDMMessage(senderDisplay, task.Message))
+			q.executeNotification(session.SessionID, q.formatDMMessage(senderDisplay, task.Message, task.ThreadID))
 		}
 	}
 }
 
 // formatDMMessage formats a DM notification message
-func (q *NotificationQueue) formatDMMessage(senderDisplay string, msg models.Message) string {
+func (q *NotificationQueue) formatDMMessage(senderDisplay string, msg models.Message, threadID string) string {
+	content := msg.Content
+	if msg.FilePath != "" {
+		content += fmt.Sprintf(fileAttachmentTemplate, msg.FilePath)
+	}
 	return fmt.Sprintf(dmTemplate,
 		senderDisplay,
-		msg.Content,
+		content,
 		msg.Timestamp,
-		msg.Timestamp,
-		msg.Timestamp,
+		threadID,
+		threadID,
 	)
 }
 
@@ -239,9 +248,14 @@ func (q *NotificationQueue) notifyGroup(task *NotificationTask) {
 				mentionArg = strings.Join(mentionedOpenclawIDs, `","`)
 			}
 
+			content := task.Message.Content
+			if task.Message.FilePath != "" {
+				content += fmt.Sprintf(fileAttachmentTemplate, task.Message.FilePath)
+			}
+
 			message := fmt.Sprintf(groupTemplate,
 				senderOpenclawID,
-				task.Message.Content,
+				content,
 				task.Message.Timestamp,
 				thread.Topic,
 				mentionedDisplay,

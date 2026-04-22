@@ -137,6 +137,7 @@ export interface Thread {
   conversationId: string;
   title: string;
   topic?: string;
+  status?: 'active' | 'closed';
   createdAt: string;
   updatedAt: string;
 }
@@ -392,6 +393,34 @@ export const api = {
   },
 
   /**
+   * Update a thread's topic or status
+   */
+  async updateThread(id: string, data: { topic?: string; status?: 'active' | 'closed' }): Promise<ApiResponse<Thread>> {
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/threads/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const error = createApiError(null, response);
+        error.message = await extractErrorMessage(response);
+        throw error;
+      }
+      const json = await response.json();
+      return { success: true, data: json.thread };
+    } catch (error) {
+      console.error('API: updateThread failed', error);
+      const apiError = isApiError(error) ? error : createApiError(error);
+      return { success: false, error: apiError.message };
+    }
+  },
+
+  /**
    * Get current user info
    */
   async getUserInfo(): Promise<ApiResponse<{ id: string; name: string; title: string; created_at: string; updated_at: string }>> {
@@ -407,6 +436,96 @@ export const api = {
       return { success: true, data };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Failed to fetch user info' };
+    }
+  },
+
+  /**
+   * Update current user profile
+   */
+  async updateUser(data: { name?: string; title?: string }): Promise<ApiResponse<{ id: string; name: string; title: string; created_at: string; updated_at: string }>> {
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/user`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const error = createApiError(null, response);
+        error.message = await extractErrorMessage(response);
+        throw error;
+      }
+      const result = await response.json();
+      return { success: true, data: result };
+    } catch (error) {
+      console.error('API: updateUser failed', error);
+      const apiError = isApiError(error) ? error : createApiError(error);
+      return { success: false, error: apiError.message };
+    }
+  },
+
+  /**
+   * Delete a group conversation
+   * Note: Only group conversations (type 'channel') can be deleted. DM returns error.
+   */
+  async deleteConversation(id: string): Promise<ApiResponse<void>> {
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/conversations/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const error = createApiError(null, response);
+        error.message = await extractErrorMessage(response);
+        throw error;
+      }
+      return { success: true };
+    } catch (error) {
+      console.error('API: deleteConversation failed', error);
+      const apiError = isApiError(error) ? error : createApiError(error);
+      return { success: false, error: apiError.message };
+    }
+  },
+
+  /**
+   * Update a conversation (group name, add/remove agents)
+   * PUT /api/conversations/:id
+   */
+  async updateConversation(
+    conversationId: string,
+    data: {
+      group_name?: string;
+      add_agent_ids?: string[];
+      remove_agent_ids?: string[];
+    }
+  ): Promise<ApiResponse<{ id: string; type: string; group_name?: string; lechat_agent_ids?: string[] }>> {
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/conversations/${encodeURIComponent(conversationId)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const error = createApiError(null, response);
+        error.message = await extractErrorMessage(response);
+        throw error;
+      }
+      const json = await response.json();
+      return { success: true, data: json };
+    } catch (error) {
+      console.error('API: updateConversation failed', error);
+      const apiError = isApiError(error) ? error : createApiError(error);
+      return { success: false, error: apiError.message };
     }
   },
 

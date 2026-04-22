@@ -15,6 +15,7 @@ interface ThreadPreview {
   unread?: boolean;
   agentName?: string;
   agentStatus?: 'online' | 'offline' | 'busy';
+  status?: 'active' | 'closed';
 }
 
 interface ConversationPreview {
@@ -24,6 +25,8 @@ interface ConversationPreview {
   lastMessage?: string;
   timestamp: string;
   unread?: boolean;
+  agentId?: string;
+  otherAgentId?: string;
 }
 
 interface Message {
@@ -45,7 +48,9 @@ interface ThreeColumnLayoutProps {
   // Left column - conversations
   conversations?: ConversationPreview[];
   selectedConversationId?: string;
+  selectedConversationType?: 'dm' | 'channel';
   onConversationSelect?: (conversationId: string) => void;
+  onDeleteConversation?: (conversationId: string, conversationTitle: string) => void;
   conversationTitle?: string;
   agents?: Agent[];
 
@@ -53,6 +58,7 @@ interface ThreeColumnLayoutProps {
   threads?: ThreadPreview[];
   selectedThreadId?: string;
   onThreadSelect?: (threadId: string) => void;
+  onUpdateThread?: (threadId: string, data: { topic?: string; status?: 'active' | 'closed' }) => void;
   isLoadingThreads?: boolean;
 
   // Right column - messages
@@ -62,17 +68,28 @@ interface ThreeColumnLayoutProps {
   isLoadingMessages?: boolean;
   onSendMessage?: (content: string) => void;
   onRetryMessage?: (messageId: string) => void;
+
+  // User profile
+  currentUserName?: string;
+  currentUserTitle?: string;
+  onOpenProfile?: () => void;
+
+  // Group settings
+  onOpenGroupSettings?: () => void;
 }
 
 export function ThreeColumnLayout({
   conversations = [],
   selectedConversationId,
+  selectedConversationType,
   onConversationSelect,
+  onDeleteConversation,
   conversationTitle = 'Conversations',
   agents = [],
   threads = [],
   selectedThreadId,
   onThreadSelect,
+  onUpdateThread,
   isLoadingThreads = false,
   threadTitle,
   threadTopic,
@@ -80,6 +97,10 @@ export function ThreeColumnLayout({
   isLoadingMessages = false,
   onSendMessage,
   onRetryMessage,
+  currentUserName,
+  currentUserTitle,
+  onOpenProfile,
+  onOpenGroupSettings,
 }: ThreeColumnLayoutProps) {
   const [mobileColumn, setMobileColumn] = useState<Column>('conversations');
 
@@ -115,7 +136,9 @@ export function ThreeColumnLayout({
     lastMessage: conv.lastMessage || '',
     timestamp: conv.timestamp,
     unread: conv.unread,
-    agentName: conv.type === 'dm' ? conv.title.split(' <=> ')[0] : undefined,
+    agentName: conv.type === 'dm' ? conv.title.split(' <=> ')[1] : undefined,
+    agentId: conv.type === 'dm' ? conv.otherAgentId : undefined,
+    otherAgentId: conv.type === 'dm' ? conv.agentId : undefined,
   }));
 
   return (
@@ -136,7 +159,7 @@ export function ThreeColumnLayout({
           {mobileColumn === 'messages' && (
             <button
               onClick={goToThreads}
-              className="w-8 h-8 rounded-lg bg-[#e0e5ec] shadow-[-2px_-2px_4px_rgba(255,255,255,0.7),2px_2px 4px rgba(0,0,0,0.1)] flex items-center justify-center"
+              className="w-8 h-8 rounded-lg bg-[#e0e5ec] shadow-[-2px_-2px_4px_rgba(255,255,255,0.7),2px_2px_4px_rgba(0,0,0,0.1)] flex items-center justify-center"
             >
               <svg className="w-4 h-4 text-[#5a6270]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -150,7 +173,18 @@ export function ThreeColumnLayout({
               {mobileColumn === 'messages' && (threadTitle || 'Messages')}
             </span>
           </div>
-          <div className="w-8" /> {/* Spacer for centering */}
+          {/* Profile button */}
+          <button
+            onClick={onOpenProfile}
+            className="w-8 h-8 rounded-lg bg-[#e0e5ec] shadow-[-2px_-2px_4px_rgba(255,255,255,0.7),2px_2px_4px_rgba(0,0,0,0.1)] flex items-center justify-center"
+            aria-label="Open profile"
+          >
+            <div className="w-6 h-6 rounded-full bg-[#ff4757] flex items-center justify-center">
+              <span className="text-xs font-semibold text-white">
+                {(currentUserName || 'U').charAt(0).toUpperCase()}
+              </span>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -172,7 +206,10 @@ export function ThreeColumnLayout({
             threads={conversationThreads}
             agents={agents}
             selectedThreadId={selectedConversationId}
+            selectedThreadType={selectedConversationType}
             onThreadSelect={handleConversationSelect}
+            onDeleteConversation={onDeleteConversation}
+            onOpenGroupSettings={onOpenGroupSettings}
           />
         </div>
 
@@ -232,6 +269,7 @@ export function ThreeColumnLayout({
                   threads={threads.map(t => ({ ...t, lastMessage: t.lastMessage || '' }))}
                   selectedThreadId={selectedThreadId}
                   onSelect={handleThreadSelect}
+                  onUpdateThread={onUpdateThread}
                 />
               )}
             </div>

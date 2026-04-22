@@ -51,7 +51,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 
 	if cfg.HTTPPort == "" {
-		cfg.HTTPPort = "8080"
+		cfg.HTTPPort = "28275"
 	}
 
 	return &cfg, nil
